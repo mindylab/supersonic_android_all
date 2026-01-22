@@ -21,6 +21,6 @@ Builds:
     commit: v1.1
     gradle:
       - yes
-    rust:
+    cargo:
       - yes
     ndk: r26b
