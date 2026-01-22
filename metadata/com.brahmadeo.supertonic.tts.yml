@@ -10,9 +10,6 @@ Summary: Local AI Text-to-Speech using Supertonic ONNX
 RepoType: git
 Repo: https://github.com/DevGitPit/supertonic-android
 
-ScanIgnore:
-  - rust/vendor
-
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 CurrentVersion: '1.1'
@@ -23,5 +20,7 @@ Builds:
     versionCode: 2
     commit: v1.1
     gradle:
+      - yes
+    rust:
       - yes
     ndk: r26b
