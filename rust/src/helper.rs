@@ -8,18 +8,11 @@ use serde_json;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use anyhow::{Result, Context, bail};
+use anyhow::{Result, Context};
 use unicode_normalization::UnicodeNormalization;
 use hound::{WavWriter, WavSpec, SampleFormat};
 use rand_distr::{Distribution, Normal};
 use regex::Regex;
-
-// Available languages for multilingual TTS
-pub const AVAILABLE_LANGS: &[&str] = &["en", "ko", "es", "pt", "fr"];
-
-pub fn is_valid_lang(lang: &str) -> bool {
-    AVAILABLE_LANGS.contains(&lang)
-}
 
 // ============================================================================ 
 // Configuration Structures
