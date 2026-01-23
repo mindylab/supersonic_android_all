@@ -36,9 +36,6 @@ Builds:
       - echo 'replace-with = "vendored-sources"' >> rust/.cargo/config.toml
       - echo '[source.vendored-sources]' >> rust/.cargo/config.toml
       - echo 'directory = "vendor"' >> rust/.cargo/config.toml
-    build:
-      - export PATH="$HOME/.cargo/bin:$PATH"
-      - gradle assembleRelease
     scanignore:
       - rust/vendor/wit-bindgen-0.51.0/wasi-cli@0.2.0.wasm
       - rust/vendor/regex-automata-0.4.13/tests/fuzz/testdata/
