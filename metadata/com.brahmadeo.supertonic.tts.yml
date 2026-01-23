@@ -15,8 +15,8 @@ CurrentVersion: '1.2'
 CurrentVersionCode: 3
 
 Builds:
-  - versionName: '1.2'
-    versionCode: 3
+  - versionCode: 3
+    versionName: '1.2'
     commit: v1.2
     gradle:
       - yes
