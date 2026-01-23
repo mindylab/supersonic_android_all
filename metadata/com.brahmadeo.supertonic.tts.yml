@@ -6,7 +6,6 @@ AuthorName: Brahmadeo
 SourceCode: https://github.com/DevGitPit/supertonic-android
 IssueTracker: https://github.com/DevGitPit/supertonic-android/issues
 Summary: Local AI Text-to-Speech using Supertonic ONNX
-
 RepoType: git
 Repo: https://github.com/DevGitPit/supertonic-android
 
@@ -21,5 +20,11 @@ Builds:
     commit: v1.1
     gradle:
       - yes
-    rust: yes
     ndk: r26b
+    prebuild:
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+      - export PATH="$HOME/.cargo/bin:$PATH"
+      - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+    build:
+      - export PATH="$HOME/.cargo/bin:$PATH"
+      - gradle assembleRelease
