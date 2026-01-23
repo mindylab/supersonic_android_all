@@ -129,6 +129,12 @@ android {
             pickFirst 'lib/arm64-v8a/libsupertonic_tts.so'
         }
     }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = "SupertonicTTS-${variant.versionName}.apk"
+        }
+    }
 }
 
 afterEvaluate {
