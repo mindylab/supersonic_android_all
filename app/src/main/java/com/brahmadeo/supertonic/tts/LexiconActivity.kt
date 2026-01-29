@@ -255,13 +255,28 @@ class LexiconActivity : ComponentActivity() {
         }
 
         val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+        val selectedLang = prefs.getString("selected_lang", "en") ?: "en"
+        val version = if (selectedLang == "en") "v1" else "v2"
         val voiceFile = prefs.getString("selected_voice", "M1.json") ?: "M1.json"
-        val stylePath = File(filesDir, "voice_styles/$voiceFile").absolutePath
+        
+        // Ensure we point to the correct versioned directory
+        val stylePath = File(filesDir, "$version/voice_styles/$voiceFile").absolutePath
         val steps = prefs.getInt("diffusion_steps", 5)
 
+        // Use higher steps (10) for test to ensure short words are audible and clear
+        val testSteps = 10
+
+        val cleanText = text.trim()
+        if (cleanText.isEmpty()) return
+        
+        // Pad the word to increase reliability for the model
+        val testMsg = getString(R.string.testing_pronunciation_fmt, cleanText)
+        val finalText = "$testMsg."
+
+        Toast.makeText(this, testMsg, Toast.LENGTH_SHORT).show()
+
         try {
-            playbackService?.stop()
-            playbackService?.synthesizeAndPlay(text, "en", stylePath, 1.0f, steps, 0)
+            playbackService?.synthesizeAndPlay(finalText, selectedLang, stylePath, 1.0f, testSteps, 0)
         } catch (e: RemoteException) {
             e.printStackTrace()
         }
