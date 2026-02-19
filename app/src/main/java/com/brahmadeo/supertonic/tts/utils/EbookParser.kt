@@ -14,8 +14,7 @@ import org.readium.r2.shared.util.toAbsoluteUrl
 import org.readium.r2.shared.util.Error
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
-import org.readium.r2.shared.publication.services.content.content
-import org.readium.r2.shared.publication.services.content.Content
+import org.readium.r2.shared.util.use
 import java.io.File
 
 class EbookParser(private val context: Context) {
@@ -46,33 +45,27 @@ class EbookParser(private val context: Context) {
 
     suspend fun extractText(publication: Publication, link: Link? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
-            val content = publication.content(locator)
-            if (content == null) {
-                return@withContext Result.failure<String>(Exception("This publication does not support content extraction."))
-            }
-
-            val chapterText = StringBuilder()
-            val elements = content.elements()
+            val fullText = StringBuilder()
             
-            val startHref = link?.url()?.toString()
-
-            for (element in elements) {
-                // If we provided a link, only extract elements matching its Href.
-                // We stop as soon as we hit a different Href.
-                if (startHref != null && element.locator.href.toString() != startHref) {
-                    break
-                }
-                
-                if (element is Content.TextualElement) {
-                    val elementText = element.text
-                    if (elementText != null && elementText.isNotBlank()) {
-                        chapterText.append(elementText).append("\n\n")
+            if (link != null) {
+                // Extract specific chapter
+                val bytes = publication.get(link)?.use { it.read().getOrElse { error: Error -> ByteArray(0) } } ?: ByteArray(0)
+                val text = bytes.decodeToString()
+                val cleanText = if (text.contains("<html", ignoreCase = true)) stripHtml(text) else text
+                fullText.append(cleanText)
+            } else {
+                // Extract whole book (caution: expensive)
+                for (readingLink in publication.readingOrder) {
+                    val bytes = publication.get(readingLink)?.use { it.read().getOrElse { error: Error -> ByteArray(0) } } ?: ByteArray(0)
+                    val text = bytes.decodeToString()
+                    val cleanText = if (text.contains("<html", ignoreCase = true)) stripHtml(text) else text
+                    if (cleanText.isNotBlank()) {
+                        fullText.append(cleanText).append("\n\n")
                     }
                 }
             }
 
-            val resultText = chapterText.toString().trim()
+            val resultText = fullText.toString().trim()
 
             if (resultText.isBlank()) {
                 return@withContext Result.failure<String>(Exception("No text content could be extracted."))
@@ -82,5 +75,11 @@ class EbookParser(private val context: Context) {
         } catch (e: Exception) {
             Result.failure<String>(e)
         }
+    }
+
+    private fun stripHtml(html: String): String {
+        return html.replace(Regex("<[^>]*>"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 }
