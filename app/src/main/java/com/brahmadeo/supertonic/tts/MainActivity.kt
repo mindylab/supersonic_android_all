@@ -130,8 +130,10 @@ class MainActivity : ComponentActivity() {
     private val ebookOutlineLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        Log.d("MainActivity", "ebookOutlineLauncher result: ${result.resultCode}")
         if (result.resultCode == RESULT_OK) {
             val text = result.data?.getStringExtra(EbookOutlineActivity.EXTRA_TEXT)
+            Log.d("MainActivity", "Received text length: ${text?.length ?: 0}")
             if (!text.isNullOrEmpty()) {
                 // Reset state before loading new ebook text
                 viewModel.inputText.value = ""
@@ -140,6 +142,8 @@ class MainActivity : ComponentActivity() {
                 
                 viewModel.inputText.value = text
                 Toast.makeText(this, "Chapter loaded", Toast.LENGTH_SHORT).show()
+            } else {
+                Log.e("MainActivity", "Received empty or null text from ebook activity")
             }
         }
     }
@@ -362,7 +366,7 @@ class MainActivity : ComponentActivity() {
                                     ebookLauncher.launch(arrayOf("application/epub+zip", "application/pdf"))
                                 } else {
                                     val intent = Intent(this, EbookLibraryActivity::class.java)
-                                    startActivity(intent)
+                                    ebookOutlineLauncher.launch(intent)
                                 }
                             } catch (e: Exception) {
                                 Log.e("MainActivity", "Failed to open ebook library", e)
