@@ -29,49 +29,63 @@ class EbookParser(private val context: Context) {
 
     suspend fun openPublication(file: File): Result<Publication> = withContext(Dispatchers.IO) {
         try {
-            Log.d("EbookParser", "Opening file: ${file.absolutePath}, exists: ${file.exists()}, size: ${file.length()}")
-            
+            Log.d("EbookParser", "Opening file: ${file.absolutePath}")
             val asset = assetRetriever.retrieve(file).getOrElse { error ->
-                Log.e("EbookParser", "Failed to retrieve asset: ${error.message}")
                 return@withContext Result.failure<Publication>(Exception("Failed to retrieve asset: ${error.message}"))
             }
 
             val publication = publicationOpener.open(asset, allowUserInteraction = false).getOrElse { error ->
-                Log.e("EbookParser", "Failed to open publication: ${error.message}")
                 return@withContext Result.failure<Publication>(Exception("Failed to open publication: ${error.message}"))
             }
 
-            Log.d("EbookParser", "Successfully opened publication: ${publication.metadata.title}")
             Result.success(publication)
         } catch (e: Exception) {
-            Log.e("EbookParser", "Error opening publication", e)
             Result.failure<Publication>(e)
         }
     }
 
     suspend fun extractText(publication: Publication, link: Link? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val fullText = StringBuilder()
+            Log.d("EbookParser", "Extracting text for link: ${link?.href}")
             
-            if (link != null) {
-                Log.d("EbookParser", "Extracting chapter: ${link.href}")
-                val resource = publication.get(link)
-                if (resource == null) {
-                    Log.e("EbookParser", "Resource not found for link: ${link.href}")
-                    return@withContext Result.failure<String>(Exception("Resource not found for link: ${link.href}"))
+            // Priority 1: Content Service (Experimental but best for semantic text)
+            val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
+            val content = publication.content(locator)
+            
+            if (content != null) {
+                val chapterText = StringBuilder()
+                val elements = content.elements()
+                val targetHref = link?.url()?.toString()
+
+                for (element in elements) {
+                    // If we have a targetHref, we stop when we leave that resource
+                    if (targetHref != null && element.locator.href.toString() != targetHref) {
+                        break
+                    }
+                    if (element is Content.TextualElement) {
+                        element.text?.let { if (it.isNotBlank()) chapterText.append(it).append("\n\n") }
+                    }
                 }
                 
-                val bytes = resource.use { it.read().getOrElse { error -> 
-                    Log.e("EbookParser", "Failed to read resource: ${error.message}")
-                    ByteArray(0) 
-                } }
-                
-                if (bytes.isNotEmpty()) {
-                    val text = bytes.decodeToString()
-                    fullText.append(renderHtml(text))
+                val result = chapterText.toString().trim()
+                if (result.isNotBlank()) {
+                    Log.d("EbookParser", "Extracted ${result.length} chars via Content API")
+                    return@withContext Result.success(result)
+                }
+            }
+
+            // Priority 2: Direct Resource Read + HTML Render (Fallback)
+            val fullText = StringBuilder()
+            if (link != null) {
+                val resource = publication.get(link)
+                if (resource != null) {
+                    val bytes = resource.use { it.read().getOrElse { ByteArray(0) } }
+                    if (bytes.isNotEmpty()) {
+                        val text = bytes.decodeToString()
+                        fullText.append(renderHtml(text))
+                    }
                 }
             } else {
-                Log.d("EbookParser", "Extracting whole book")
                 for (readingLink in publication.readingOrder) {
                     val resource = publication.get(readingLink) ?: continue
                     val bytes = resource.use { it.read().getOrElse { ByteArray(0) } }
@@ -86,30 +100,12 @@ class EbookParser(private val context: Context) {
             }
 
             val resultText = fullText.toString().trim()
-
-            if (resultText.isBlank()) {
-                Log.w("EbookParser", "Extracted text is blank, trying Content API fallback")
-                val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
-                val content = publication.content(locator)
-                if (content != null) {
-                    val chapterText = StringBuilder()
-                    val elements = content.elements()
-                    val startHref = link?.url()?.toString()
-                    for (element in elements) {
-                        if (startHref != null && element.locator.href.toString() != startHref) break
-                        if (element is Content.TextualElement) {
-                            element.text?.let { if (it.isNotBlank()) chapterText.append(it).append("\n\n") }
-                        }
-                    }
-                    val altResult = chapterText.toString().trim()
-                    if (altResult.isNotBlank()) return@withContext Result.success(altResult)
-                }
-                
-                return@withContext Result.failure<String>(Exception("No text content could be extracted."))
+            if (resultText.isNotBlank()) {
+                Log.d("EbookParser", "Extracted ${resultText.length} chars via Resource Fallback")
+                return@withContext Result.success(resultText)
             }
 
-            Log.d("EbookParser", "Successfully extracted ${resultText.length} characters")
-            Result.success(resultText)
+            Result.failure<String>(Exception("No text content could be extracted."))
         } catch (e: Exception) {
             Log.e("EbookParser", "Error extracting text", e)
             Result.failure<String>(e)
@@ -117,21 +113,37 @@ class EbookParser(private val context: Context) {
     }
 
     private fun renderHtml(html: String): String {
-        if (!html.contains("<html", ignoreCase = true)) return html
+        if (!html.contains("<html", ignoreCase = true) && !html.contains("<body", ignoreCase = true)) return html
         
         var text = html
+        // Remove style/script/head
         text = text.replace(Regex("<head>.*?</head>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         text = text.replace(Regex("<script.*?>.*?</script>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         text = text.replace(Regex("<style.*?>.*?</style>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
-        text = text.replace(Regex("<(p|div|h[1-6]|li|br|tr|blockquote).*?>", RegexOption.IGNORE_CASE), "\n")
+        
+        // Block tags to newlines
+        text = text.replace(Regex("<(p|div|h[1-6]|li|br|tr|blockquote|title|header|footer).*?>", RegexOption.IGNORE_CASE), "\n")
+        
+        // Strip remaining tags
         text = text.replace(Regex("<[^>]*>"), " ")
+        
+        // HTML Entities
         text = text.replace("&nbsp;", " ")
             .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&quot;", "\"")
             .replace("&#39;", "'")
+            .replace("&rsquo;", "'")
+            .replace("&lsquo;", "'")
+            .replace("&rdquo;", "\"")
+            .replace("&ldquo;", "\"")
         
-        return text.split("\n").joinToString("\n") { it.trim().replace(Regex("\\s+"), " ") }.trim()
+        // Clean up whitespace: normalize spaces and merge excessive newlines
+        return text.split("\n")
+            .map { it.trim().replace(Regex("\\s+"), " ") }
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n")
+            .trim()
     }
 }
