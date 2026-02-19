@@ -19,6 +19,7 @@ import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.use
 import org.readium.r2.shared.publication.services.content.content
 import org.readium.r2.shared.publication.services.content.Content
+import org.readium.r2.shared.publication.services.positions
 import java.io.File
 
 class EbookParser(private val context: Context) {
@@ -49,9 +50,7 @@ class EbookParser(private val context: Context) {
         try {
             val startUrl = link?.url()?.toString()
             val startPath = startUrl?.substringBefore('#')
-            Log.d("EbookParser", "Extracting. Link: ${link?.href}, StartPath: $startPath")
             
-            // Priority 1: Content Service
             val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
             val content = publication.content(locator)
             
@@ -73,48 +72,73 @@ class EbookParser(private val context: Context) {
                 }
                 
                 val result = chapterText.toString().trim()
-                if (result.isNotBlank()) {
-                    Log.d("EbookParser", "Content API success: ${result.take(50)}...")
-                    return@withContext Result.success(result)
-                }
+                if (result.isNotBlank()) return@withContext Result.success(result)
             }
 
-            // Priority 2: Direct Resource Read Fallback
-            Log.d("EbookParser", "Content API failed or blank, using fallback")
-            val fullText = StringBuilder()
-            if (link != null) {
-                val resource = publication.get(link)
-                if (resource != null) {
-                    val bytes = resource.use { it.read().getOrElse { ByteArray(0) } }
-                    if (bytes.isNotEmpty()) {
-                        val text = bytes.decodeToString()
-                        fullText.append(renderHtml(text))
-                    }
-                }
-            } else {
-                for (readingLink in publication.readingOrder) {
-                    val resource = publication.get(readingLink) ?: continue
-                    val bytes = resource.use { it.read().getOrElse { ByteArray(0) } }
-                    if (bytes.isNotEmpty()) {
-                        val text = bytes.decodeToString()
-                        val rendered = renderHtml(text)
-                        if (rendered.isNotBlank()) {
-                            fullText.append(rendered).append("\n\n")
-                        }
-                    }
-                }
-            }
-
-            val resultText = fullText.toString().trim()
-            if (resultText.isNotBlank()) {
-                return@withContext Result.success(resultText)
-            }
+            val fallbackText = extractFallback(publication, link)
+            if (fallbackText.isNotBlank()) return@withContext Result.success(fallbackText)
 
             Result.failure<String>(Exception("No text content could be extracted."))
         } catch (e: Exception) {
-            Log.e("EbookParser", "Error extracting text", e)
             Result.failure<String>(e)
         }
+    }
+
+    suspend fun extractPages(publication: Publication, pageIndices: List<Int>): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val positions = publication.positions()
+            val combinedText = StringBuilder()
+            
+            // Filter only the pages requested
+            for (index in pageIndices.sorted()) {
+                if (index < 0 || index >= positions.size) continue
+                
+                val locator = positions[index]
+                val content = publication.content(locator)
+                
+                if (content != null) {
+                    val elements = content.elements()
+                    // Extract only elements belonging to this page locator
+                    for (element in elements) {
+                        // Stop if we move to next page's locator
+                        if (index + 1 < positions.size && element.locator.href == positions[index+1].href && element.locator.locations.progression == positions[index+1].locations.progression) {
+                            break
+                        }
+                        if (element is Content.TextualElement) {
+                            element.text?.let { if (it.isNotBlank()) combinedText.append(it).append(" ") }
+                        }
+                    }
+                    combinedText.append("\n\n")
+                }
+            }
+            
+            val result = combinedText.toString().trim()
+            if (result.isBlank()) {
+                return@withContext Result.failure<String>(Exception("No text found on selected pages."))
+            }
+            Result.success(result)
+        } catch (e: Exception) {
+            Result.failure<String>(e)
+        }
+    }
+
+    private suspend fun extractFallback(publication: Publication, link: Link?): String {
+        val fullText = StringBuilder()
+        if (link != null) {
+            val bytes = publication.get(link)?.use { it.read().getOrElse { ByteArray(0) } } ?: ByteArray(0)
+            val text = bytes.decodeToString()
+            fullText.append(renderHtml(text))
+        } else {
+            for (readingLink in publication.readingOrder) {
+                val bytes = publication.get(readingLink)?.use { it.read().getOrElse { ByteArray(0) } } ?: ByteArray(0)
+                val text = bytes.decodeToString()
+                val rendered = renderHtml(text)
+                if (rendered.isNotBlank()) {
+                    fullText.append(rendered).append("\n\n")
+                }
+            }
+        }
+        return fullText.toString().trim()
     }
 
     private fun renderHtml(html: String): String {
