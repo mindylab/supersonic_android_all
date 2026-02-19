@@ -2,6 +2,7 @@ package com.brahmadeo.supertonic.tts.utils
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.readium.r2.shared.publication.Publication
@@ -44,46 +45,55 @@ class EbookParser(private val context: Context) {
 
     suspend fun extractText(publication: Publication, link: Link? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
-            // Method 1: Try ContentService (Experimental but cleaner)
-            val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
-            val content = publication.content(locator)
-            
-            if (content != null) {
-                val chapterText = StringBuilder()
-                val elements = content.elements()
-                val startHref = link?.url()?.toString()
-
-                for (element in elements) {
-                    if (startHref != null && element.locator.href.toString() != startHref) {
-                        break
-                    }
-                    if (element is Content.TextualElement) {
-                        element.text?.let { if (it.isNotBlank()) chapterText.append(it).append("\n\n") }
-                    }
-                }
-                val result = chapterText.toString().trim()
-                if (result.isNotBlank()) return@withContext Result.success(result)
-            }
-
-            // Method 2: Fallback to Resource Read + Better HTML stripping
             val fullText = StringBuilder()
+            
             if (link != null) {
-                val bytes = publication.get(link)?.use { it.read().getOrElse { ByteArray(0) } } ?: ByteArray(0)
-                val text = bytes.decodeToString()
-                fullText.append(renderHtml(text))
-            } else {
-                for (readingLink in publication.readingOrder) {
-                    val bytes = publication.get(readingLink)?.use { it.read().getOrElse { ByteArray(0) } } ?: ByteArray(0)
+                // Extract specific chapter
+                val resource = publication.get(link)
+                if (resource == null) {
+                    return@withContext Result.failure<String>(Exception("Resource not found for link: ${link.href}"))
+                }
+                
+                val bytes = resource.use { it.read().getOrElse { ByteArray(0) } }
+                if (bytes.isNotEmpty()) {
                     val text = bytes.decodeToString()
-                    val rendered = renderHtml(text)
-                    if (rendered.isNotBlank()) {
-                        fullText.append(rendered).append("\n\n")
+                    fullText.append(renderHtml(text))
+                }
+            } else {
+                // Extract whole book
+                for (readingLink in publication.readingOrder) {
+                    val resource = publication.get(readingLink) ?: continue
+                    val bytes = resource.use { it.read().getOrElse { ByteArray(0) } }
+                    if (bytes.isNotEmpty()) {
+                        val text = bytes.decodeToString()
+                        val rendered = renderHtml(text)
+                        if (rendered.isNotBlank()) {
+                            fullText.append(rendered).append("\n\n")
+                        }
                     }
                 }
             }
 
             val resultText = fullText.toString().trim()
+
             if (resultText.isBlank()) {
+                // Last ditch effort: Try Content API if Resource approach failed
+                val locator = link?.let { Locator(href = it.url(), mediaType = it.mediaType ?: org.readium.r2.shared.util.mediatype.MediaType.BINARY) }
+                val content = publication.content(locator)
+                if (content != null) {
+                    val chapterText = StringBuilder()
+                    val elements = content.elements()
+                    val startHref = link?.url()?.toString()
+                    for (element in elements) {
+                        if (startHref != null && element.locator.href.toString() != startHref) break
+                        if (element is Content.TextualElement) {
+                            element.text?.let { if (it.isNotBlank()) chapterText.append(it).append("\n\n") }
+                        }
+                    }
+                    val altResult = chapterText.toString().trim()
+                    if (altResult.isNotBlank()) return@withContext Result.success(altResult)
+                }
+                
                 return@withContext Result.failure<String>(Exception("No text content could be extracted."))
             }
 
@@ -96,20 +106,12 @@ class EbookParser(private val context: Context) {
     private fun renderHtml(html: String): String {
         if (!html.contains("<html", ignoreCase = true)) return html
         
-        // Improved HTML to Text conversion without external libraries
         var text = html
-        // 1. Remove <head>, <script>, <style> content
-        text = text.replace(Regex("<head>.*?</head>", RegexOption.IGNORE_CASE), "")
-        text = text.replace(Regex("<script.*?>.*?</script>", RegexOption.IGNORE_CASE), "")
-        text = text.replace(Regex("<style.*?>.*?</style>", RegexOption.IGNORE_CASE), "")
-        
-        // 2. Replace block elements with double newlines
+        text = text.replace(Regex("<head>.*?</head>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+        text = text.replace(Regex("<script.*?>.*?</script>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+        text = text.replace(Regex("<style.*?>.*?</style>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
         text = text.replace(Regex("<(p|div|h[1-6]|li|br|tr|blockquote).*?>", RegexOption.IGNORE_CASE), "\n")
-        
-        // 3. Strip remaining tags
         text = text.replace(Regex("<[^>]*>"), " ")
-        
-        // 4. Decode common entities
         text = text.replace("&nbsp;", " ")
             .replace("&amp;", "&")
             .replace("&lt;", "<")
@@ -117,7 +119,6 @@ class EbookParser(private val context: Context) {
             .replace("&quot;", "\"")
             .replace("&#39;", "'")
         
-        // 5. Clean up whitespace
         return text.split("\n").joinToString("\n") { it.trim().replace(Regex("\\s+"), " ") }.trim()
     }
 }

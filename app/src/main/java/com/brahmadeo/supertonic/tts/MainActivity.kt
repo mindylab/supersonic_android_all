@@ -352,10 +352,16 @@ class MainActivity : ComponentActivity() {
                         onLexiconClick = { startActivity(Intent(this, LexiconActivity::class.java)) },
                         onDeleteV2Click = { viewModel.showV2DeleteDialog.value = true },
                         onOpenEbookClick = { 
-                            if (EbookManager.getRecentBooks(this).isEmpty()) {
+                            try {
+                                if (EbookManager.getRecentBooks(this).isEmpty()) {
+                                    ebookLauncher.launch(arrayOf("application/epub+zip", "application/pdf"))
+                                } else {
+                                    val intent = Intent(this, EbookLibraryActivity::class.java)
+                                    startActivity(intent)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "Failed to open ebook library", e)
                                 ebookLauncher.launch(arrayOf("application/epub+zip", "application/pdf"))
-                            } else {
-                                startActivity(Intent(this, EbookLibraryActivity::class.java))
                             }
                         },
                         isV2Ready = AssetManager.isV2Ready(this),
