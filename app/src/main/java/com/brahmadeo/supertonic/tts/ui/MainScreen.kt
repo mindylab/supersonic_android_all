@@ -127,10 +127,13 @@ fun MainScreen(
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            val scrollState = rememberScrollState()
+            
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .imePadding() // Shrinks the scrollable area when keyboard is up
+                    .verticalScroll(scrollState)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -149,7 +152,9 @@ fun MainScreen(
                         .fillMaxWidth()
                         .heightIn(min = 200.dp)
                         .onFocusChanged { isFocused = it.isFocused },
-                    maxLines = 10
+                    // Increased maxLines significantly to avoid internal scrolling conflict.
+                    // This makes the cursor stay visible as the whole page scrolls instead.
+                    maxLines = 40 
                 )
 
                 // Controls Card
