@@ -27,7 +27,7 @@ jobs:
         id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r26b
+          ndk-version: r29
 
       - name: Configure local.properties
         run: |
