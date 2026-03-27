@@ -27,6 +27,7 @@ Builds:
       - source $HOME/.cargo/env
       - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android
         x86_64-linux-android
+      - cd rust && cargo vendor vendor
       - mkdir -p rust/.cargo
       - echo '[target.aarch64-linux-android]' > rust/.cargo/config.toml
       - echo 'linker = "aarch64-linux-android34-clang"' >> rust/.cargo/config.toml
@@ -34,9 +35,6 @@ Builds:
       - echo 'replace-with = "vendored-sources"' >> rust/.cargo/config.toml
       - echo '[source.vendored-sources]' >> rust/.cargo/config.toml
       - echo 'directory = "vendor"' >> rust/.cargo/config.toml
-    scanignore:
-      - rust/vendor/wit-bindgen-0.51.0/wasi-cli@0.2.0.wasm
-      - rust/vendor/regex-automata-0.4.13/tests/fuzz/testdata/
     ndk: r26b
 
   - versionName: '1.9'
@@ -54,6 +52,7 @@ Builds:
       - source $HOME/.cargo/env
       - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android
         x86_64-linux-android
+      - cd rust && cargo vendor vendor
       - mkdir -p rust/.cargo
       - echo '[target.aarch64-linux-android]' > rust/.cargo/config.toml
       - echo 'linker = "aarch64-linux-android34-clang"' >> rust/.cargo/config.toml
@@ -61,9 +60,6 @@ Builds:
       - echo 'replace-with = "vendored-sources"' >> rust/.cargo/config.toml
       - echo '[source.vendored-sources]' >> rust/.cargo/config.toml
       - echo 'directory = "vendor"' >> rust/.cargo/config.toml
-    scanignore:
-      - rust/vendor/wit-bindgen-0.51.0/wasi-cli@0.2.0.wasm
-      - rust/vendor/regex-automata-0.4.13/tests/fuzz/testdata/
     ndk: r26b
 
   - versionName: '2.7'
@@ -81,6 +77,7 @@ Builds:
       - source $HOME/.cargo/env
       - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android
         x86_64-linux-android
+      - cd rust && cargo vendor vendor
       - mkdir -p rust/.cargo
       - echo '[target.aarch64-linux-android]' > rust/.cargo/config.toml
       - echo 'linker = "aarch64-linux-android34-clang"' >> rust/.cargo/config.toml
@@ -88,9 +85,6 @@ Builds:
       - echo 'replace-with = "vendored-sources"' >> rust/.cargo/config.toml
       - echo '[source.vendored-sources]' >> rust/.cargo/config.toml
       - echo 'directory = "vendor"' >> rust/.cargo/config.toml
-    scanignore:
-      - rust/vendor/wit-bindgen-0.51.0/wasi-cli@0.2.0.wasm
-      - rust/vendor/regex-automata-0.4.13/tests/fuzz/testdata/
     ndk: r29
 
 AutoUpdateMode: Version

@@ -13,3 +13,5 @@ keystore_base64.txt
 release-key.jks
 app/src/main/jniLibs/
 kls_database.db
+.dual-graph/
+rust/vendor/
