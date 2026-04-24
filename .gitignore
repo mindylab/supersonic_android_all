@@ -16,3 +16,5 @@ kls_database.db
 .dual-graph/
 rust/vendor/
 CLAUDE.md
+CLAUDE.md
+GEMINI.md
