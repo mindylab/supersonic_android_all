@@ -75,6 +75,7 @@ pub extern "system" fn Java_com_brahmadeo_supertonic_tts_SupertonicTTS_synthesiz
     speed: jfloat,
     buffer_seconds: jfloat,
     steps: jint,
+    gain: jfloat,
 ) -> jbyteArray {
     let engine = unsafe { &mut *(ptr as *mut SupertonicEngine) };
     
@@ -126,7 +127,7 @@ pub extern "system" fn Java_com_brahmadeo_supertonic_tts_SupertonicTTS_synthesiz
         if let Some(audio) = audio_chunk {
             let mut pcm_data = Vec::with_capacity(audio.len() * 2);
             for &sample in audio {
-                let clamped = sample.max(-1.0).min(1.0);
+                let clamped = (sample * gain).max(-1.0).min(1.0);
                 let val = (clamped * 32767.0) as i16;
                 pcm_data.extend_from_slice(&val.to_le_bytes());
             }
@@ -165,7 +166,7 @@ pub extern "system" fn Java_com_brahmadeo_supertonic_tts_SupertonicTTS_synthesiz
 
             let mut pcm_data = Vec::with_capacity(wav_data.len() * 2);
             for &sample in &wav_data {
-                let clamped = sample.max(-1.0).min(1.0);
+                let clamped = (sample * gain).max(-1.0).min(1.0);
                 let val = (clamped * 32767.0) as i16;
                 pcm_data.extend_from_slice(&val.to_le_bytes());
             }

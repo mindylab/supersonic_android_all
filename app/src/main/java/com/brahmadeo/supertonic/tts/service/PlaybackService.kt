@@ -109,23 +109,6 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         const val AUDIO_WRITE_CHUNK_SIZE = 8192
     }
 
-    private fun applyVolumeBoost(pcmData: ByteArray, gain: Float): ByteArray {
-        if (gain == 1.0f) return pcmData
-        val size = pcmData.size
-        val boosted = ByteArray(size)
-        val inBuffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val outBuffer = ByteBuffer.wrap(boosted).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val count = size / 2
-        for (i in 0 until count) {
-            val sample = inBuffer.get(i)
-            var scaled = (sample * gain).toInt()
-            if (scaled > 32767) scaled = 32767
-            if (scaled < -32768) scaled = -32768
-            outBuffer.put(i, scaled.toShort())
-        }
-        return boosted
-    }
-
     override fun onBind(intent: Intent): IBinder {
         return binder
     }
@@ -240,13 +223,11 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                         val normalizedText = textNormalizer.normalize(sentence, sentenceLang)
 
                         val audioData = SupertonicTTS.generateAudio(
-                            normalizedText, sentenceLang, stylePath, speed, 0.0f, steps, null
+                            normalizedText, sentenceLang, stylePath, speed, 0.0f, steps, VOLUME_BOOST_FACTOR, null
                         )
                         
                         if (audioData != null && audioData.isNotEmpty()) {
-                            val boostedData = applyVolumeBoost(audioData, VOLUME_BOOST_FACTOR)
-                            
-                            channel.send(PlaybackItem(index, boostedData))
+                            channel.send(PlaybackItem(index, audioData))
                             producedCount++
                             
                             // Signal pre-buffer complete when 3 chunks are ready (2 in buffer)
@@ -522,9 +503,9 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                         // val sentenceLang = LanguageDetector.detect(sentence, lang)
                         val sentenceLang = lang
                         val normalizedText = textNormalizer.normalize(sentence, sentenceLang)
-                        val audioData = SupertonicTTS.generateAudio(normalizedText, sentenceLang, stylePath, speed, 0.0f, steps, null)
+                        val audioData = SupertonicTTS.generateAudio(normalizedText, sentenceLang, stylePath, speed, 0.0f, steps, VOLUME_BOOST_FACTOR, null)
                         if (audioData != null) {
-                            outputStream.write(applyVolumeBoost(audioData, VOLUME_BOOST_FACTOR))
+                            outputStream.write(audioData)
                         }
                     }
                     if (success && outputStream.size() > 0) {

@@ -25,23 +25,6 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         const val VOLUME_BOOST_FACTOR = 2.5f
     }
 
-    private fun applyVolumeBoost(pcmData: ByteArray, gain: Float): ByteArray {
-        if (gain == 1.0f) return pcmData
-        val size = pcmData.size
-        val boosted = ByteArray(size)
-        val inBuffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val outBuffer = ByteBuffer.wrap(boosted).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val count = size / 2
-        for (i in 0 until count) {
-            val sample = inBuffer.get(i)
-            var scaled = (sample * gain).toInt()
-            if (scaled > 32767) scaled = 32767
-            if (scaled < -32768) scaled = -32768
-            outBuffer.put(i, scaled.toShort())
-        }
-        return boosted
-    }
-
     override fun onCreate() {
         super.onCreate()
         Log.i("SupertonicTTS", "Service created")
@@ -249,18 +232,16 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
                 val sentenceLang = requestLang
                 val normalizedText = textNormalizer.normalize(sentence, sentenceLang)
 
-                val audioData = SupertonicTTS.generateAudio(normalizedText, sentenceLang, stylePath, effectiveSpeed, 0.0f, steps, null)
-                
+                val audioData = SupertonicTTS.generateAudio(normalizedText, sentenceLang, stylePath, effectiveSpeed, 0.0f, steps, VOLUME_BOOST_FACTOR, null)
+
                 if (audioData != null && audioData.isNotEmpty()) {
-                    val boostedData = applyVolumeBoost(audioData, VOLUME_BOOST_FACTOR)
                     var offset = 0
-                    while (offset < boostedData.size) {
-                        val length = Math.min(4096, boostedData.size - offset)
-                        callback.audioAvailable(boostedData, offset, length)
+                    while (offset < audioData.size) {
+                        val length = Math.min(4096, audioData.size - offset)
+                        callback.audioAvailable(audioData, offset, length)
                         offset += length
                     }
-                }
-            }
+                }            }
             if (success) callback.done() else callback.error()
         } finally {
             // Isolation handled in SupertonicTTS
