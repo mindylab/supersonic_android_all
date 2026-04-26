@@ -32,9 +32,12 @@ pub extern "system" fn Java_com_brahmadeo_supertonic_tts_SupertonicTTS_init(
         Config::default().with_max_level(LevelFilter::Info),
     );
 
-    // Install panic hook to see Rust errors in logcat
+    // VULN-002 fix: don't log panic payload (may contain user text/PII)
     panic::set_hook(Box::new(|panic_info| {
-        log::error!("RUST PANIC: {}", panic_info);
+        let location = panic_info.location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        log::error!("RUST PANIC at {}", location);
     }));
 
     let model_path: String = env.get_string(&model_path).expect("Couldn't get java string!").into();

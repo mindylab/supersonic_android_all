@@ -1,6 +1,7 @@
 package com.brahmadeo.supertonic.tts
 
 import android.util.Log
+import java.util.concurrent.atomic.AtomicReference
 
 object SupertonicTTS {
     private var nativePtr: Long = 0
@@ -46,10 +47,9 @@ object SupertonicTTS {
 
     private var listeners = java.util.concurrent.CopyOnWriteArrayList<ProgressListener>()
     
-    @Volatile
-    private var currentSessionId: Long = 0
-    
-    private var currentTaskListener: ProgressListener? = null
+    // VULN-003 fix: Use an atomic SessionContext to ensure sid and listener are updated together
+    private class SessionContext(val sid: Long, val listener: ProgressListener?)
+    private val currentSession = AtomicReference<SessionContext?>(null)
 
     interface ProgressListener {
         fun onProgress(sessionId: Long, current: Int, total: Int)
@@ -66,10 +66,13 @@ object SupertonicTTS {
 
     // Called from JNI
     fun notifyProgress(current: Int, total: Int) {
-        val sid = currentSessionId
+        val ctx = currentSession.get()
+        val sid = ctx?.sid ?: 0L
+        val listener = ctx?.listener
+        
         // Priority to task-specific listener
-        if (currentTaskListener != null) {
-            currentTaskListener?.onProgress(sid, current, total)
+        if (listener != null) {
+            listener.onProgress(sid, current, total)
         } else {
             // Only notify global listeners if no specific task listener is set
             for (l in listeners) l.onProgress(sid, current, total)
@@ -78,10 +81,13 @@ object SupertonicTTS {
 
     // Called from JNI
     fun notifyAudioChunk(data: ByteArray) {
-        val sid = currentSessionId
+        val ctx = currentSession.get()
+        val sid = ctx?.sid ?: 0L
+        val listener = ctx?.listener
+        
         // STRICT ISOLATION: Audio chunks ONLY go to the requester
-        if (currentTaskListener != null) {
-            currentTaskListener?.onAudioChunk(sid, data)
+        if (listener != null) {
+            listener.onAudioChunk(sid, data)
         } else {
             // Only if no specific task listener is active (e.g. legacy app call)
             // we send to global listeners
@@ -101,6 +107,9 @@ object SupertonicTTS {
         return isCancelled
     }
 
+    @Volatile
+    private var sessionIdCounter: Long = 0
+
     @Synchronized
     fun generateAudio(text: String, lang: String, stylePath: String, speed: Float = 1.0f, bufferDuration: Float = 0.0f, steps: Int = 5, gain: Float = 1.0f, listener: ProgressListener? = null): ByteArray? {
         if (nativePtr == 0L) {
@@ -108,8 +117,8 @@ object SupertonicTTS {
             return null
         }
         
-        currentSessionId++ // New session for every sentence
-        currentTaskListener = listener
+        val sid = ++sessionIdCounter
+        currentSession.set(SessionContext(sid, listener))
         
         try {
             val data = synthesize(nativePtr, text, lang, stylePath, speed, bufferDuration, steps, gain)
@@ -118,7 +127,7 @@ object SupertonicTTS {
             Log.e("SupertonicTTS", "Native synthesis exception: ${e.message}")
             return null
         } finally {
-            currentTaskListener = null
+            currentSession.set(null)
         }
     }
 
