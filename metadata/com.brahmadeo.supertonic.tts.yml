@@ -1,8 +1,10 @@
+AntiFeatures:
+  NonFreeNet:
+    en-US: Relies on hugginface.co for models.
 Categories:
   - Development
   - Multimedia
 License: GPL-3.0-only
-AntiFeature: NonFreeNet
 AuthorName: Brahmadeo
 SourceCode: https://github.com/DevGitPit/supertonic-android
 IssueTracker: https://github.com/DevGitPit/supertonic-android/issues
@@ -15,7 +17,7 @@ Repo: https://github.com/DevGitPit/supertonic-android
 Builds:
   - versionName: 2.8.0
     versionCode: 9
-    commit: 519d2d458ea864d568ef28a8d515c1d258ce1329
+    commit: ace5478271aff859093c59215ab5f01e2088fe75
     sudo:
       - apt-get update
       - apt-get install -y gcc libc-dev rustup pkg-config libssl-dev
