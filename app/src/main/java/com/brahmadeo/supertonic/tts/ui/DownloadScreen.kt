@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.brahmadeo.supertonic.tts.ui.components.WavyLinearProgressIndicator
 
 @Composable
 fun DownloadScreen(
@@ -47,11 +48,11 @@ fun DownloadScreen(
             
             if (error == null) {
                 Spacer(modifier = Modifier.height(32.dp))
-                LinearProgressIndicator(
+                WavyLinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = status,
                     style = MaterialTheme.typography.labelMedium,

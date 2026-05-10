@@ -209,7 +209,7 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            SupertonicTheme {
+            SupertonicTheme(voiceFile = viewModel.selectedVoiceFile.value) {
                 if (viewModel.isDownloading.value) {
                     DownloadScreen(
                         status = viewModel.downloadStatus.value,
@@ -308,7 +308,10 @@ class MainActivity : ComponentActivity() {
 
                     MainScreen(
                         inputText = viewModel.inputText.value,
-                        onInputTextChange = { viewModel.inputText.value = it },
+                        onInputTextChange = { 
+                            viewModel.inputText.value = it
+                            saveStringPref("last_text", it)
+                        },
                         placeholderText = placeholder,
                         isInitializing = viewModel.isInitializing.value,
                         isSynthesizing = viewModel.isSynthesizing.value,
@@ -431,6 +434,7 @@ class MainActivity : ComponentActivity() {
                         miniPlayerIsPlaying = viewModel.miniPlayerIsPlaying.value,
                         onMiniPlayerClick = {
                             val intent = Intent(this, PlaybackActivity::class.java)
+                            intent.putExtra("is_resume", true)
                             intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                             startActivity(intent)
                         },
@@ -449,6 +453,7 @@ class MainActivity : ComponentActivity() {
 
     private fun loadPreferences() {
         val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
+        viewModel.inputText.value = prefs.getString("last_text", "") ?: ""
         viewModel.currentLang.value = prefs.getString("selected_lang", MainViewModel.DEFAULT_LANG) ?: MainViewModel.DEFAULT_LANG
         viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", MainViewModel.DEFAULT_VOICE) ?: MainViewModel.DEFAULT_VOICE
         viewModel.selectedVoiceFile2.value = prefs.getString("selected_voice_2", MainViewModel.DEFAULT_VOICE_2) ?: MainViewModel.DEFAULT_VOICE_2
@@ -711,14 +716,13 @@ class MainActivity : ComponentActivity() {
 
         if (lastText.isNullOrEmpty()) return
 
-        // If service is already active, just go to PlaybackActivity (no prompt)
+        // If service is already active, we just sync the mini player state
         try {
             if (playbackService != null && playbackService?.isServiceActive == true) {
-                val intent = Intent(this, PlaybackActivity::class.java).apply {
-                    putExtra("is_resume", true)
-                    flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                runOnUiThread {
+                    viewModel.showMiniPlayer.value = true
+                    viewModel.miniPlayerTitle.value = lastText
                 }
-                startActivity(intent)
                 return
             }
         } catch (e: Exception) { }

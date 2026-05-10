@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.brahmadeo.supertonic.tts.service
 
 import android.app.NotificationChannel
@@ -14,6 +15,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
 import android.os.IBinder
+import android.os.RemoteCallbackList
 import android.os.RemoteException
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -81,11 +83,16 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         }
     }
 
-    private var listener: IPlaybackListener? = null
+    private val listeners = RemoteCallbackList<IPlaybackListener>()
 
     fun setListener(listener: IPlaybackListener?) {
-        this.listener = listener
-        notifyListenerState(isPlaying)
+        if (listener != null) {
+            listeners.register(listener)
+            try {
+                listener.onStateChanged(isPlaying, audioTrack != null || isSynthesizing, isSynthesizing)
+                listener.onProgress(currentSentenceIndex, -1)
+            } catch (_: RemoteException) {}
+        }
     }
 
     private lateinit var mediaSession: MediaSessionCompat
@@ -288,12 +295,10 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                 for (item in channel) {
                     if (SupertonicTTS.isCancelled() || !isActive || !isSynthesizing) break
                     
-                    withContext(Dispatchers.Main) {
-                        currentSentenceIndex = item.index
-                        try {
-                            listener?.onProgress(item.index, totalSentences)
-                        } catch (_: RemoteException) { listener = null }
-                    }
+                withContext(Dispatchers.Main) {
+                    currentSentenceIndex = item.index
+                    notifyListenerProgress(item.index, totalSentences)
+                }
                     
                     playAudioDataBlocking(item.data)
                 }
@@ -304,9 +309,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                         isSynthesizing = false
                         
                         if (!wasCancelled) {
-                            try {
-                                listener?.onProgress(totalSentences, totalSentences)
-                            } catch (_: RemoteException) { listener = null }
+                            notifyListenerProgress(totalSentences, totalSentences)
                         }
                         
                         notifyListenerState(true)
@@ -495,9 +498,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
         abandonAudioFocus()
         if (wakeLock?.isHeld == true) wakeLock?.release()
         if (removeNotification) {
-            try {
-                listener?.onPlaybackStopped()
-            } catch (_: RemoteException) { listener = null }
+            notifyListenerPlaybackStopped()
             updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
             stopForeground(STOP_FOREGROUND_REMOVE)
         }
@@ -520,11 +521,43 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
     }
 
     private fun notifyListenerState(playing: Boolean) {
-        try {
-            listener?.onStateChanged(playing, audioTrack != null || isSynthesizing, isSynthesizing)
-        } catch (_: RemoteException) {
-            listener = null
+        val n = listeners.beginBroadcast()
+        for (i in 0 until n) {
+            try {
+                listeners.getBroadcastItem(i).onStateChanged(playing, audioTrack != null || isSynthesizing, isSynthesizing)
+            } catch (_: RemoteException) {}
         }
+        listeners.finishBroadcast()
+    }
+
+    private fun notifyListenerProgress(current: Int, total: Int) {
+        val n = listeners.beginBroadcast()
+        for (i in 0 until n) {
+            try {
+                listeners.getBroadcastItem(i).onProgress(current, total)
+            } catch (_: RemoteException) {}
+        }
+        listeners.finishBroadcast()
+    }
+
+    private fun notifyListenerPlaybackStopped() {
+        val n = listeners.beginBroadcast()
+        for (i in 0 until n) {
+            try {
+                listeners.getBroadcastItem(i).onPlaybackStopped()
+            } catch (_: RemoteException) {}
+        }
+        listeners.finishBroadcast()
+    }
+
+    private fun notifyListenerExportComplete(success: Boolean, path: String) {
+        val n = listeners.beginBroadcast()
+        for (i in 0 until n) {
+            try {
+                listeners.getBroadcastItem(i).onExportComplete(success, path)
+            } catch (_: RemoteException) {}
+        }
+        listeners.finishBroadcast()
     }
 
     private fun requestAudioFocus(): Boolean {
@@ -613,9 +646,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                         if (!isActive || SupertonicTTS.isCancelled()) break
                         
                         withContext(Dispatchers.Main) {
-                            try {
-                                listener?.onProgress(index + 1, sentences.size)
-                            } catch (_: RemoteException) { listener = null }
+                            notifyListenerProgress(index + 1, sentences.size)
                         }
 
                         val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
@@ -640,11 +671,7 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
                     withContext(Dispatchers.Main) {
                         isSynthesizing = false
                         stopForeground(STOP_FOREGROUND_REMOVE)
-                        try {
-                            listener?.onExportComplete(exportSuccess, outputFile.absolutePath)
-                        } catch (_: RemoteException) { 
-                            listener = null 
-                        }
+                        notifyListenerExportComplete(exportSuccess, outputFile.absolutePath)
                         notifyListenerState(false)
                     }
                 }

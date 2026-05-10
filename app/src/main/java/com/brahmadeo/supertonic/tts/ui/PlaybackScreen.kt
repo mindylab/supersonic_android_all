@@ -2,6 +2,7 @@ package com.brahmadeo.supertonic.tts.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,8 +19,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.brahmadeo.supertonic.tts.ui.components.IndeterminateWavyProgressIndicator
+import com.brahmadeo.supertonic.tts.ui.components.WavyCircularProgressIndicator
+import com.brahmadeo.supertonic.tts.ui.components.WavyLinearProgressIndicator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +45,6 @@ fun PlaybackScreen(
 ) {
     val listState = rememberLazyListState()
 
-    // Auto-scroll to current index
     LaunchedEffect(currentIndex) {
         if (currentIndex in sentences.indices) {
             listState.animateScrollToItem(currentIndex)
@@ -50,7 +54,7 @@ fun PlaybackScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Now Playing") },
+                title = { Text("Now Playing", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -74,9 +78,9 @@ fun PlaybackScreen(
                     top = 16.dp,
                     start = 16.dp,
                     end = 16.dp,
-                    bottom = 120.dp // Space for player card
+                    bottom = 140.dp
                 ),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 itemsIndexed(sentences) { index, sentence ->
@@ -88,26 +92,47 @@ fun PlaybackScreen(
                 }
             }
 
-            // Floating Player Card
+            // Enhanced Player Card
             ElevatedCard(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(16.dp)
                     .fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraLarge,
-                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 6.dp)
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 8.dp),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                )
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier.padding(20.dp)
                 ) {
                     if (isServiceActive || isPlaying) {
-                        LinearProgressIndicator(
-                            progress = {
-                                if (sentences.isNotEmpty()) (currentIndex + 1).toFloat() / sentences.size else 0f
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Progress",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "${currentIndex + 1} / ${sentences.size}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            WavyLinearProgressIndicator(
+                                progress = {
+                                    if (sentences.isNotEmpty()) (currentIndex + 1).toFloat() / sentences.size else 0f
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(24.dp))
                     }
 
                     Row(
@@ -116,7 +141,12 @@ fun PlaybackScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (isServiceActive || isPlaying) {
-                            IconButton(onClick = onStopClick) {
+                            IconButton(
+                                onClick = onStopClick,
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            ) {
                                 Icon(Icons.Default.Close, contentDescription = "Stop")
                             }
                         }
@@ -124,18 +154,24 @@ fun PlaybackScreen(
                         FloatingActionButton(
                             onClick = onPlayPauseClick,
                             containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            shape = MaterialTheme.shapes.large,
+                            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 0.dp)
                         ) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "Pause" else "Play"
+                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                modifier = Modifier.size(32.dp)
                             )
                         }
 
                         if (isServiceActive || !isPlaying) {
                             IconButton(
                                 onClick = onExportClick,
-                                enabled = !isExporting
+                                enabled = !isExporting,
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
                             ) {
                                 Icon(Icons.Default.Save, contentDescription = "Export")
                             }
@@ -156,7 +192,7 @@ fun PlaybackScreen(
                     ) {
                         Card(
                             modifier = Modifier
-                                .width(280.dp)
+                                .width(300.dp)
                                 .padding(16.dp),
                             shape = MaterialTheme.shapes.extraLarge
                         ) {
@@ -168,22 +204,35 @@ fun PlaybackScreen(
                                     text = "Saving Audio...",
                                     style = MaterialTheme.typography.titleMedium
                                 )
-                                Spacer(modifier = Modifier.height(16.dp))
+                                Spacer(modifier = Modifier.height(24.dp))
                                 if (exportTotal > 0) {
                                     val progress = exportCurrent.toFloat() / exportTotal
-                                    CircularProgressIndicator(
-                                        progress = { progress },
-                                        modifier = Modifier.size(48.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Box(contentAlignment = Alignment.Center) {
+                                        WavyCircularProgressIndicator(
+                                            progress = { progress },
+                                            modifier = Modifier.size(80.dp),
+                                            strokeWidth = 6.dp,
+                                            waveAmplitude = 3.dp
+                                        )
+                                        Text(
+                                            text = "${(progress * 100).toInt()}%",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
                                     Text(
-                                        text = "$exportCurrent / $exportTotal",
-                                        style = MaterialTheme.typography.bodySmall
+                                        text = "$exportCurrent / $exportTotal chunks",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 } else {
-                                    CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                                    IndeterminateWavyProgressIndicator(
+                                        modifier = Modifier.size(80.dp),
+                                        strokeWidth = 6.dp
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(16.dp))
+                                Spacer(modifier = Modifier.height(24.dp))
                                 TextButton(
                                     onClick = onCancelExportClick,
                                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
@@ -206,31 +255,41 @@ fun SentenceItem(
     onClick: () -> Unit
 ) {
     val containerColor by animateColorAsState(
-        if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+        if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.surface
     )
     val contentColor by animateColorAsState(
         if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
     )
-    val borderStroke = if (isActive) {
-        null
-    } else {
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    }
 
     Card(
         colors = CardDefaults.cardColors(
             containerColor = containerColor,
             contentColor = contentColor
         ),
-        border = borderStroke,
+        border = if (isActive) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
     ) {
-        Text(
-            text = text,
-            style = if (isActive) MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(16.dp)
-        )
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isActive) {
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(24.dp)
+                        .background(MaterialTheme.colorScheme.primary, MaterialTheme.shapes.extraSmall)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+            }
+            Text(
+                text = text,
+                style = if (isActive) MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold) else MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }

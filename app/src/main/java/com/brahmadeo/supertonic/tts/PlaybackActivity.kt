@@ -103,9 +103,16 @@ class PlaybackActivity : ComponentActivity() {
                 isBound = true
 
                 if (intent.getBooleanExtra("is_resume", false)) {
-                    val serviceIndex = playbackService?.getCurrentIndex() ?: -1
-                    if (serviceIndex != -1) {
-                        currentIndexState.intValue = serviceIndex
+                    val isActive = playbackService?.isServiceActive == true
+                    if (isActive) {
+                        val serviceIndex = playbackService?.getCurrentIndex() ?: -1
+                        if (serviceIndex != -1) {
+                            currentIndexState.intValue = serviceIndex
+                        }
+                    } else {
+                        // Not playing in service, but user wants to resume: 
+                        // Start playback from the saved index
+                        playFromIndex(currentIndexState.intValue)
                     }
                     restoreState()
                 } else {
@@ -144,7 +151,7 @@ class PlaybackActivity : ComponentActivity() {
         setupList(currentText)
 
         setContent {
-            SupertonicTheme {
+            SupertonicTheme(voiceFile = currentVoicePath) {
                 PlaybackScreen(
                     sentences = sentencesState.value,
                     currentIndex = currentIndexState.intValue,
@@ -175,6 +182,20 @@ class PlaybackActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (intent.getBooleanExtra("is_resume", false)) {
+            val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+            val newText = prefs.getString("last_text", "") ?: ""
+            if (newText != currentText) {
+                currentText = newText
+                currentVoicePath = prefs.getString("last_voice_path", "") ?: ""
+                currentSpeed = prefs.getFloat("last_speed", 1.0f)
+                currentSteps = prefs.getInt("last_steps", 5)
+                currentLang = prefs.getString("last_lang", "en") ?: "en"
+                currentIndexState.intValue = prefs.getInt("last_index", 0)
+                setupList(currentText)
+            }
+        }
+
         if (isBound && playbackService != null) {
             try {
                 playbackService?.setListener(playbackListenerStub)
@@ -306,5 +327,10 @@ class PlaybackActivity : ComponentActivity() {
             unbindService(connection)
             isBound = false
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 }
