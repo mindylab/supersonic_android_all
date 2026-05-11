@@ -58,7 +58,7 @@ class LexiconActivity : ComponentActivity() {
         refreshRules()
 
         val intent = Intent(this, PlaybackService::class.java)
-        bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        bindService(intent, connection, BIND_AUTO_CREATE)
 
         setContent {
             SupertonicTheme {
@@ -252,7 +252,7 @@ class LexiconActivity : ComponentActivity() {
             return
         }
 
-        val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
         val selectedLang = prefs.getString("selected_lang", "en") ?: "en"
         val version = if (selectedLang == "en") "v1" else "v2"
 

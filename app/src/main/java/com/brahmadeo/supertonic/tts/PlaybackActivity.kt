@@ -22,6 +22,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.content.edit
 
 class PlaybackActivity : ComponentActivity() {
 
@@ -34,6 +35,8 @@ class PlaybackActivity : ComponentActivity() {
     private var isPlayingState = mutableStateOf(false)
     private var isServiceActiveState = mutableStateOf(false)
     private var isExportingState = mutableStateOf(false)
+    private var exportCurrentState = mutableIntStateOf(0)
+    private var exportTotalState = mutableIntStateOf(0)
 
     // State persistence
     private var currentText = ""
@@ -60,10 +63,15 @@ class PlaybackActivity : ComponentActivity() {
 
         override fun onProgress(current: Int, total: Int) {
             runOnUiThread {
-                currentIndexState.intValue = current
-                updateIndexState(current)
-                if (total > 0 && current >= total) {
-                    clearState()
+                if (isExportingState.value) {
+                    exportCurrentState.intValue = current
+                    exportTotalState.intValue = total
+                } else {
+                    currentIndexState.intValue = current
+                    updateIndexState(current)
+                    if (total > 0 && current !in 0 until total) {
+                        clearState()
+                    }
                 }
             }
         }
@@ -77,6 +85,7 @@ class PlaybackActivity : ComponentActivity() {
 
         override fun onExportComplete(success: Boolean, path: String) {
             runOnUiThread {
+                if (!isExportingState.value) return@runOnUiThread
                 isExportingState.value = false
                 if (success) {
                     Toast.makeText(this@PlaybackActivity, getString(R.string.saved_to_fmt, path), Toast.LENGTH_LONG).show()
@@ -95,6 +104,17 @@ class PlaybackActivity : ComponentActivity() {
                 isBound = true
 
                 if (intent.getBooleanExtra("is_resume", false)) {
+                    val isActive = playbackService?.isServiceActive == true
+                    if (isActive) {
+                        val serviceIndex = playbackService?.getCurrentIndex() ?: -1
+                        if (serviceIndex != -1) {
+                            currentIndexState.intValue = serviceIndex
+                        }
+                    } else {
+                        // Not playing in service, but user wants to resume: 
+                        // Start playback from the saved index
+                        playFromIndex(currentIndexState.intValue)
+                    }
                     restoreState()
                 } else {
                     startPlaybackFromIntent()
@@ -120,7 +140,7 @@ class PlaybackActivity : ComponentActivity() {
         currentLang = intent.getStringExtra(EXTRA_LANG) ?: "en"
 
         if (intent.getBooleanExtra("is_resume", false) && currentText.isEmpty()) {
-             val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+             val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
              currentText = prefs.getString("last_text", "") ?: ""
              currentVoicePath = prefs.getString("last_voice_path", "") ?: ""
              currentSpeed = prefs.getFloat("last_speed", 1.0f)
@@ -132,14 +152,15 @@ class PlaybackActivity : ComponentActivity() {
         setupList(currentText)
 
         setContent {
-            SupertonicTheme {
+            SupertonicTheme(voiceFile = currentVoicePath) {
                 PlaybackScreen(
                     sentences = sentencesState.value,
                     currentIndex = currentIndexState.intValue,
                     isPlaying = isPlayingState.value,
                     isServiceActive = isServiceActiveState.value,
                     isExporting = isExportingState.value,
-                    exportProgress = -1, // Indeterminate for now
+                    exportCurrent = exportCurrentState.intValue,
+                    exportTotal = exportTotalState.intValue,
                     onBackClick = { finish() },
                     onItemClick = { index -> playFromIndex(index) },
                     onPlayPauseClick = { handlePlayPause() },
@@ -147,21 +168,42 @@ class PlaybackActivity : ComponentActivity() {
                     onExportClick = { startExport() },
                     onCancelExportClick = {
                         try { playbackService?.stop() } catch (e: Exception) {}
-                        isExportingState.value = false
+                        if (isExportingState.value) {
+                            isExportingState.value = false
+                            Toast.makeText(this@PlaybackActivity, "Audio saving cancelled", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
             }
         }
 
         val intent = Intent(this, PlaybackService::class.java)
-        bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        bindService(intent, connection, BIND_AUTO_CREATE)
     }
 
     override fun onResume() {
         super.onResume()
+        if (intent.getBooleanExtra("is_resume", false)) {
+            val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
+            val newText = prefs.getString("last_text", "") ?: ""
+            if (newText != currentText) {
+                currentText = newText
+                currentVoicePath = prefs.getString("last_voice_path", "") ?: ""
+                currentSpeed = prefs.getFloat("last_speed", 1.0f)
+                currentSteps = prefs.getInt("last_steps", 5)
+                currentLang = prefs.getString("last_lang", "en") ?: "en"
+                currentIndexState.intValue = prefs.getInt("last_index", 0)
+                setupList(currentText)
+            }
+        }
+
         if (isBound && playbackService != null) {
             try {
                 playbackService?.setListener(playbackListenerStub)
+                val serviceIndex = playbackService?.getCurrentIndex() ?: -1
+                if (serviceIndex != -1) {
+                    currentIndexState.intValue = serviceIndex
+                }
             } catch (e: RemoteException) {
                 e.printStackTrace()
             }
@@ -170,7 +212,7 @@ class PlaybackActivity : ComponentActivity() {
 
     private fun setupList(text: String) {
         val normalizer = TextNormalizer()
-        val sentences = normalizer.splitIntoSentences(text)
+        val sentences = normalizer.splitIntoSentences(text, currentLang)
         sentencesState.value = sentences
     }
 
@@ -221,26 +263,26 @@ class PlaybackActivity : ComponentActivity() {
     }
 
     private fun saveState() {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
-            .putString("last_text", currentText)
-            .putString("last_voice_path", currentVoicePath)
-            .putFloat("last_speed", currentSpeed)
-            .putInt("last_steps", currentSteps)
-            .putString("last_lang", currentLang)
-            .putBoolean("is_playing", true)
-            .apply()
+        getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
+            putString("last_text", currentText)
+                .putString("last_voice_path", currentVoicePath)
+                .putFloat("last_speed", currentSpeed)
+                .putInt("last_steps", currentSteps)
+                .putString("last_lang", currentLang)
+                .putBoolean("is_playing", true)
+        }
     }
 
     private fun updateIndexState(index: Int) {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
-            .putInt("last_index", index)
-            .apply()
+        getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
+            putInt("last_index", index)
+        }
     }
 
     private fun clearState() {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
-            .putBoolean("is_playing", false)
-            .apply()
+        getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
+            putBoolean("is_playing", false)
+        }
     }
 
     private fun restoreState() {
@@ -252,7 +294,15 @@ class PlaybackActivity : ComponentActivity() {
     }
 
     private fun startExport() {
+        if (currentText.isEmpty()) {
+            Toast.makeText(this, "No text to save", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        exportCurrentState.intValue = 0
+        exportTotalState.intValue = sentencesState.value.size
         isExportingState.value = true
+
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val filename = "Supertonic_TTS_$timestamp.wav"
         val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
@@ -273,10 +323,15 @@ class PlaybackActivity : ComponentActivity() {
         super.onDestroy()
         if (isBound) {
             try {
-                playbackService?.setListener(null)
-            } catch (e: RemoteException) { }
+                playbackService?.removeListener(playbackListenerStub)
+            } catch (e: Exception) { }
             unbindService(connection)
             isBound = false
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
     }
 }

@@ -1,6 +1,5 @@
 package com.brahmadeo.supertonic.tts.utils
 
-import java.text.NumberFormat
 import java.util.Locale
 import java.util.regex.Pattern
 
@@ -169,7 +168,7 @@ class CurrencyNormalizer {
 
             val currencyName = currencySymbols[symbol] ?: "dollars"
 
-            if (symbol == "₹" || symbol == "\u20B9") {
+            if (symbol == "₹") {
                 val formattedWhole = formatIndianAmount(whole)
                 if (cents == "00") {
                     "$formattedWhole rupees"
@@ -194,7 +193,7 @@ class CurrencyNormalizer {
             val amount = m.group(2) ?: ""
             val currencyName = currencySymbols[symbol] ?: "dollars"
 
-            if (symbol == "₹" || symbol == "\u20B9") {
+            if (symbol == "₹") {
                 val formattedAmount = formatIndianAmount(amount)
                 "$formattedAmount rupees"
             } else {

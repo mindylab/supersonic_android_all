@@ -1,6 +1,5 @@
 package com.brahmadeo.supertonic.tts
 
-import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -15,14 +14,13 @@ class HistoryActivity : ComponentActivity() {
         setContent {
             SupertonicTheme {
                 HistoryScreen(
-                    onBackClick = { finish() },
-                    onItemClick = { item ->
-                        val resultIntent = Intent()
-                        resultIntent.putExtra("selected_text", item.text)
-                        setResult(Activity.RESULT_OK, resultIntent)
-                        finish()
-                    }
-                )
+                    onBackClick = { finish() }
+                ) { item ->
+                    val resultIntent = Intent()
+                    resultIntent.putExtra("selected_text", item.text)
+                    setResult(RESULT_OK, resultIntent)
+                    finish()
+                }
             }
         }
     }

@@ -1,7 +1,6 @@
 package com.brahmadeo.supertonic.tts
 
 import android.Manifest
-import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -16,36 +15,33 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.activity.viewModels
+import androidx.compose.runtime.remember
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.core.content.ContextCompat
 import com.brahmadeo.supertonic.tts.service.IPlaybackListener
 import com.brahmadeo.supertonic.tts.service.IPlaybackService
 import com.brahmadeo.supertonic.tts.service.PlaybackService
+import com.brahmadeo.supertonic.tts.ui.DownloadScreen
 import com.brahmadeo.supertonic.tts.ui.MainScreen
 import com.brahmadeo.supertonic.tts.ui.theme.SupertonicTheme
+import com.brahmadeo.supertonic.tts.utils.AssetManager
+import com.brahmadeo.supertonic.tts.utils.EbookManager
+import com.brahmadeo.supertonic.tts.utils.EbookParser
 import com.brahmadeo.supertonic.tts.utils.HistoryManager
 import com.brahmadeo.supertonic.tts.utils.LexiconManager
 import com.brahmadeo.supertonic.tts.utils.QueueManager
-import kotlinx.coroutines.*
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-
-import androidx.activity.viewModels
 import com.brahmadeo.supertonic.tts.viewmodel.MainViewModel
-import com.brahmadeo.supertonic.tts.ui.DownloadScreen
-import com.brahmadeo.supertonic.tts.utils.AssetManager
-import com.brahmadeo.supertonic.tts.utils.EbookParser
-import com.brahmadeo.supertonic.tts.utils.EbookManager
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import androidx.core.content.edit
 
 class MainActivity : ComponentActivity() {
 
@@ -54,11 +50,11 @@ class MainActivity : ComponentActivity() {
 
     // Data
     private val languages = mapOf(
-        "English" to "en",
-        "French" to "fr",
-        "Portuguese" to "pt",
-        "Spanish" to "es",
-        "Korean" to "ko"
+        R.string.lang_english to "en",
+        R.string.lang_french to "fr",
+        R.string.lang_portuguese to "pt",
+        R.string.lang_spanish to "es",
+        R.string.lang_korean to "ko"
     )
 
     private var currentModelVersion = "v1" // "v1" or "v2"
@@ -74,7 +70,7 @@ class MainActivity : ComponentActivity() {
                 viewModel.isSynthesizing.value = isSynthesizing
                 if (hasContent || isSynthesizing) {
                     viewModel.showMiniPlayer.value = true
-                    val lastText = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).getString("last_text", "")
+                    val lastText = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).getString("last_text", "")
                     if (!lastText.isNullOrEmpty()) {
                         viewModel.miniPlayerTitle.value = lastText
                     }
@@ -99,6 +95,7 @@ class MainActivity : ComponentActivity() {
             isBound = true
             try {
                 playbackService?.setListener(playbackListener)
+                checkResumeState()
             } catch (e: Exception) { e.printStackTrace() }
         }
 
@@ -141,12 +138,25 @@ class MainActivity : ComponentActivity() {
                 val stopIntent = Intent(this, PlaybackService::class.java).apply { action = "STOP_PLAYBACK" }
                 startService(stopIntent)
                 
-                viewModel.inputText.value = text
+                viewModel.inputText.value = prepareTextForTts(text, viewModel.currentLang.value)
                 Toast.makeText(this, "Chapter loaded", Toast.LENGTH_SHORT).show()
             } else {
                 Log.e("MainActivity", "Received empty or null text from ebook activity")
             }
         }
+    }
+
+    private fun prepareTextForTts(text: String?, lang: String): String {
+        if (text.isNullOrEmpty()) return ""
+        val trimmed = text.trim()
+        
+        // Append " ." to prevent diffusion model from cutting off abruptly at the end
+        // RESTRICTED for Korean
+        if (lang.lowercase().startsWith("ko")) {
+            return trimmed
+        }
+        
+        return if (trimmed.endsWith(" .")) trimmed else "$trimmed ."
     }
 
     private val historyLauncher = registerForActivityResult(
@@ -168,14 +178,14 @@ class MainActivity : ComponentActivity() {
         checkNotificationPermission()
 
         val bindIntent = Intent(this, PlaybackService::class.java)
-        bindService(bindIntent, connection, Context.BIND_AUTO_CREATE)
+        bindService(bindIntent, connection, BIND_AUTO_CREATE)
 
         ebookParser = EbookParser(this)
         LexiconManager.load(this)
         QueueManager.initialize(this)
 
         // Initial setup based on saved language
-        val savedLang = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).getString("selected_lang", MainViewModel.DEFAULT_LANG) ?: MainViewModel.DEFAULT_LANG
+        val savedLang = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).getString("selected_lang", MainViewModel.DEFAULT_LANG) ?: MainViewModel.DEFAULT_LANG
         currentModelVersion = if (savedLang == "en") "v1" else "v2"
 
         // On FIRST LAUNCH, we check/download the required version.
@@ -196,14 +206,13 @@ class MainActivity : ComponentActivity() {
         }
 
         handleIntent(intent)
-        checkResumeState()
 
         setContent {
-            SupertonicTheme {
+            SupertonicTheme(voiceFile = viewModel.selectedVoiceFile.value) {
                 if (viewModel.isDownloading.value) {
                     DownloadScreen(
                         status = viewModel.downloadStatus.value,
-                        progress = viewModel.downloadProgress.value,
+                        progress = viewModel.downloadProgress.floatValue,
                         version = viewModel.downloadingVersion.value,
                         error = viewModel.downloadError.value,
                         onRetry = { startDownload(viewModel.downloadingVersion.value) }
@@ -237,8 +246,8 @@ class MainActivity : ComponentActivity() {
                                 saveStringPref("selected_lang", "en")
                                 switchModel("v1")
                             },
-                            title = { Text("Download Multilingual Models?") },
-                            text = { Text("Supporting French, Spanish, Portuguese, and Korean requires a additional download (~350MB). Do you want to download it now?") },
+                            title = { Text(getString(R.string.v2_download_title)) },
+                            text = { Text(getString(R.string.v2_download_message)) },
                             confirmButton = {
                                 TextButton(onClick = {
                                     val lang = viewModel.pendingLangCode
@@ -246,7 +255,9 @@ class MainActivity : ComponentActivity() {
                                     saveStringPref("selected_lang", lang)
                                     viewModel.showV2ConfirmDialog.value = false
                                     switchModel("v2")
-                                }) { Text("Download") }
+                                    val resetIntent = Intent(this@MainActivity, PlaybackService::class.java).apply { action = "RESET_ENGINE" }
+                                    startService(resetIntent)
+                                }) { Text(getString(R.string.v2_download_button)) }
                             },
                             dismissButton = {
                                 TextButton(onClick = {
@@ -254,7 +265,7 @@ class MainActivity : ComponentActivity() {
                                     viewModel.currentLang.value = "en"
                                     saveStringPref("selected_lang", "en")
                                     switchModel("v1")
-                                }) { Text("Cancel") }
+                                }) { Text(getString(R.string.cancel)) }
                             }
                         )
                     }
@@ -262,8 +273,8 @@ class MainActivity : ComponentActivity() {
                     if (viewModel.showV2DeleteDialog.value) {
                         androidx.compose.material3.AlertDialog(
                             onDismissRequest = { viewModel.showV2DeleteDialog.value = false },
-                            title = { Text("Delete Multilingual Models?") },
-                            text = { Text("This will remove all multilingual models and voice styles to free up space (~350MB). You can download them again later if needed.") },
+                            title = { Text(getString(R.string.v2_delete_title)) },
+                            text = { Text(getString(R.string.v2_delete_message)) },
                             confirmButton = {
                                 TextButton(
                                     onClick = {
@@ -273,23 +284,33 @@ class MainActivity : ComponentActivity() {
                                         viewModel.currentLang.value = "en"
                                         saveStringPref("selected_lang", "en")
                                         switchModel("v1")
-                                        Toast.makeText(this@MainActivity, "Multilingual models deleted", Toast.LENGTH_SHORT).show()
+                                        val resetIntent = Intent(this@MainActivity, PlaybackService::class.java).apply { action = "RESET_ENGINE" }
+                                        startService(resetIntent)
+                                        Toast.makeText(this@MainActivity, getString(R.string.v2_deleted_msg), Toast.LENGTH_SHORT).show()
                                     },
                                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                                ) { Text("Delete") }
+                                ) { Text(getString(R.string.delete)) }
                             },
                             dismissButton = {
-                                TextButton(onClick = { viewModel.showV2DeleteDialog.value = false }) { Text("Cancel") }
+                                TextButton(onClick = { viewModel.showV2DeleteDialog.value = false }) { Text(getString(R.string.cancel)) }
                             }
                         )
                     }
 
-                    // Get localized placeholder
-                    val placeholder = getLocalizedResource(this, viewModel.currentLang.value, R.string.default_input_text)
+                    // Get localized placeholder and languages
+                    val placeholder = remember(viewModel.currentLang.value) {
+                        getLocalizedResource(this@MainActivity, viewModel.currentLang.value, R.string.default_input_text)
+                    }
+                    val localizedLanguages = remember(viewModel.currentLang.value) {
+                        languages.mapKeys { getLocalizedResource(this@MainActivity, viewModel.currentLang.value, it.key) }
+                    }
 
                     MainScreen(
                         inputText = viewModel.inputText.value,
-                        onInputTextChange = { viewModel.inputText.value = it },
+                        onInputTextChange = { 
+                            viewModel.inputText.value = it
+                            saveStringPref("last_text", it)
+                        },
                         placeholderText = placeholder,
                         isInitializing = viewModel.isInitializing.value,
                         isSynthesizing = viewModel.isSynthesizing.value,
@@ -298,18 +319,22 @@ class MainActivity : ComponentActivity() {
                             generateAndPlay(textToPlay)
                         },
 
-                        languages = languages,
+                        languages = localizedLanguages,
                         currentLangCode = viewModel.currentLang.value,
                         onLangChange = {
                             if (it == "en") {
                                 viewModel.currentLang.value = it
                                 saveStringPref("selected_lang", it)
                                 switchModel("v1")
+                                val resetIntent = Intent(this, PlaybackService::class.java).apply { action = "RESET_ENGINE" }
+                                startService(resetIntent)
                             } else {
                                 if (AssetManager.isV2Ready(this@MainActivity)) {
                                     viewModel.currentLang.value = it
                                     saveStringPref("selected_lang", it)
                                     switchModel("v2")
+                                    val resetIntent = Intent(this, PlaybackService::class.java).apply { action = "RESET_ENGINE" }
+                                    startService(resetIntent)
                                 } else {
                                     viewModel.pendingLangCode = it
                                     viewModel.showV2ConfirmDialog.value = true
@@ -331,25 +356,51 @@ class MainActivity : ComponentActivity() {
                         isMixingEnabled = viewModel.isMixingEnabled.value,
                         onMixingEnabledChange = { 
                             viewModel.isMixingEnabled.value = it
-                            getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit().putBoolean("is_mixing_enabled", it).apply()
+                            getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
+                                putBoolean(
+                                    "is_mixing_enabled",
+                                    it
+                                )
+                            }
                         },
                         selectedVoiceFile2 = viewModel.selectedVoiceFile2.value,
                         onVoice2Change = {
                             viewModel.selectedVoiceFile2.value = it
                             saveStringPref("selected_voice_2", it)
                         },
-                        mixAlpha = viewModel.mixAlpha.value,
+                        mixAlpha = viewModel.mixAlpha.floatValue,
                         onMixAlphaChange = { 
-                            viewModel.mixAlpha.value = it
-                            getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit().putFloat("mix_alpha", it).apply()
+                            viewModel.mixAlpha.floatValue = it
+                            getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
+                                putFloat(
+                                    "mix_alpha",
+                                    it
+                                )
+                            }
                         },
 
-                        speed = viewModel.currentSpeed.value,
-                        onSpeedChange = { viewModel.currentSpeed.value = it },
-                        steps = viewModel.currentSteps.value,
+                        speed = viewModel.currentSpeed.floatValue,
+                        onSpeedChange = { viewModel.currentSpeed.floatValue = it },
+                        steps = viewModel.currentSteps.intValue,
                         onStepsChange = {
-                            viewModel.currentSteps.value = it
-                            getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit().putInt("diffusion_steps", it).apply()
+                            viewModel.currentSteps.intValue = it
+                            getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
+                                putInt(
+                                    "diffusion_steps",
+                                    it
+                                )
+                            }
+                        },
+
+                        isAdvancedNormalizationEnabled = viewModel.isAdvancedNormalizationEnabled.value,
+                        onAdvancedNormalizationEnabledChange = {
+                            viewModel.isAdvancedNormalizationEnabled.value = it
+                            getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit {
+                                putBoolean(
+                                    "is_advanced_normalization",
+                                    it
+                                )
+                            }
                         },
 
                         onResetClick = {
@@ -377,11 +428,20 @@ class MainActivity : ComponentActivity() {
                         },
                         isV2Ready = AssetManager.isV2Ready(this),
 
+                        canResume = viewModel.canResume.value,
+                        onResumeClick = {
+                            val intent = Intent(this, PlaybackActivity::class.java)
+                            intent.putExtra("is_resume", true)
+                            intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                            startActivity(intent)
+                        },
+
                         showMiniPlayer = viewModel.showMiniPlayer.value,
                         miniPlayerTitle = viewModel.miniPlayerTitle.value,
                         miniPlayerIsPlaying = viewModel.miniPlayerIsPlaying.value,
                         onMiniPlayerClick = {
                             val intent = Intent(this, PlaybackActivity::class.java)
+                            intent.putExtra("is_resume", true)
                             intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                             startActivity(intent)
                         },
@@ -398,15 +458,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        checkResumeState()
+    }
+
     private fun loadPreferences() {
-        val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
+        viewModel.inputText.value = prefs.getString("last_text", "") ?: ""
         viewModel.currentLang.value = prefs.getString("selected_lang", MainViewModel.DEFAULT_LANG) ?: MainViewModel.DEFAULT_LANG
         viewModel.selectedVoiceFile.value = prefs.getString("selected_voice", MainViewModel.DEFAULT_VOICE) ?: MainViewModel.DEFAULT_VOICE
         viewModel.selectedVoiceFile2.value = prefs.getString("selected_voice_2", MainViewModel.DEFAULT_VOICE_2) ?: MainViewModel.DEFAULT_VOICE_2
         viewModel.isMixingEnabled.value = prefs.getBoolean("is_mixing_enabled", false)
-        viewModel.mixAlpha.value = prefs.getFloat("mix_alpha", 0.5f)
-        viewModel.currentSpeed.value = prefs.getFloat("speed", MainViewModel.DEFAULT_SPEED) ?: MainViewModel.DEFAULT_SPEED
-        viewModel.currentSteps.value = prefs.getInt("diffusion_steps", MainViewModel.DEFAULT_STEPS)
+        viewModel.mixAlpha.floatValue = prefs.getFloat("mix_alpha", 0.5f)
+        viewModel.currentSpeed.floatValue = prefs.getFloat("speed", MainViewModel.DEFAULT_SPEED)
+        viewModel.currentSteps.intValue = prefs.getInt("diffusion_steps", MainViewModel.DEFAULT_STEPS)
+        viewModel.isAdvancedNormalizationEnabled.value = prefs.getBoolean("is_advanced_normalization", false)
     }
 
     private fun checkNotificationPermission() {
@@ -420,15 +487,15 @@ class MainActivity : ComponentActivity() {
     private fun getLocalizedResource(context: Context, lang: String, resId: Int): String {
         val locale = java.util.Locale.forLanguageTag(lang)
         val config = android.content.res.Configuration(context.resources.configuration)
-        config.setLocale(locale)
+        config.setLocales(android.os.LocaleList(locale))
         val localizedContext = context.createConfigurationContext(config)
         return localizedContext.resources.getString(resId)
     }
 
     private fun saveStringPref(key: String, value: String) {
-        getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
-            .putString(key, value)
-            .apply()
+        getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).edit(commit = true) {
+            putString(key, value)
+        }
     }
 
     private fun startDownload(version: String) {
@@ -441,14 +508,14 @@ class MainActivity : ComponentActivity() {
                     AssetManager.downloadV1(this@MainActivity) { status, progress ->
                         runOnUiThread {
                             viewModel.downloadStatus.value = status
-                            viewModel.downloadProgress.value = progress
+                            viewModel.downloadProgress.floatValue = progress
                         }
                     }
                 } else {
                     AssetManager.downloadV2(this@MainActivity) { status, progress ->
                         runOnUiThread {
                             viewModel.downloadStatus.value = status
-                            viewModel.downloadProgress.value = progress
+                            viewModel.downloadProgress.floatValue = progress
                         }
                     }
                 }
@@ -467,20 +534,25 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initializeEngine(version: String) {
+        val modelPath = File(filesDir, "$version/onnx").absolutePath
+        val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
+
+        if (SupertonicTTS.isInitialized(modelPath)) {
+            Log.i("MainActivity", "Engine already initialized for $version, skipping reload")
+            viewModel.isInitializing.value = false
+            currentModelVersion = version
+            setupVoicesMap(version, viewModel.currentLang.value)
+            return
+        }
+
         currentModelVersion = version
         viewModel.isInitializing.value = true
         
         CoroutineScope(Dispatchers.IO).launch {
             withContext(Dispatchers.Main) {
-                setupVoicesMap(version)
+                setupVoicesMap(version, viewModel.currentLang.value)
             }
             
-            // Force release of any existing engine to ensure we load the new model path
-            SupertonicTTS.release()
-            
-            val modelPath = File(filesDir, "$version/onnx").absolutePath
-            val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
-
             if (SupertonicTTS.initialize(modelPath, libPath)) {
                 withContext(Dispatchers.Main) {
                     viewModel.isInitializing.value = false
@@ -490,7 +562,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun switchModel(version: String) {
-        if (currentModelVersion == version) return
+        // Even if the version is the same, we might need to re-initialize 
+        // to update the voices map for a new language.
         
         // Lazy Check
         val isReady = if (version == "v1") AssetManager.isV1Ready(this) else AssetManager.isV2Ready(this)
@@ -505,7 +578,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun setupVoicesMap(version: String) {
+    private fun setupVoicesMap(version: String, lang: String) {
+        viewModel.voiceFiles.clear()
         val voiceResources = mapOf(
             "M1.json" to R.string.voice_m1,
             "M2.json" to R.string.voice_m2,
@@ -520,7 +594,7 @@ class MainActivity : ComponentActivity() {
         )
 
         voiceResources.forEach { (filename, resId) ->
-            viewModel.voiceFiles[getString(resId)] = filename
+            viewModel.voiceFiles[getLocalizedResource(this, lang, resId)] = filename
         }
 
         // Check dynamic dir for default listing
@@ -555,7 +629,7 @@ class MainActivity : ComponentActivity() {
         if (viewModel.isMixingEnabled.value) {
             val stylePath2 = File(filesDir, "$currentModelVersion/voice_styles/${viewModel.selectedVoiceFile2.value}").absolutePath
             if (File(stylePath2).exists()) {
-                stylePath = "$stylePath;$stylePath2;${viewModel.mixAlpha.value}"
+                stylePath = "$stylePath;$stylePath2;${viewModel.mixAlpha.floatValue}"
             }
         }
         
@@ -572,7 +646,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 launchPlaybackActivity(text, stylePath)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             launchPlaybackActivity(text, stylePath)
         }
     }
@@ -589,7 +663,7 @@ class MainActivity : ComponentActivity() {
         var stylePath = File(filesDir, "$currentModelVersion/voice_styles/${viewModel.selectedVoiceFile.value}").absolutePath
         if (viewModel.isMixingEnabled.value) {
             val stylePath2 = File(filesDir, "$currentModelVersion/voice_styles/${viewModel.selectedVoiceFile2.value}").absolutePath
-            stylePath = "$stylePath;$stylePath2;${viewModel.mixAlpha.value}"
+            stylePath = "$stylePath;$stylePath2;${viewModel.mixAlpha.floatValue}"
         }
 
         try {
@@ -597,8 +671,8 @@ class MainActivity : ComponentActivity() {
                 text,
                 viewModel.currentLang.value,
                 stylePath,
-                viewModel.currentSpeed.value,
-                viewModel.currentSteps.value,
+                viewModel.currentSpeed.floatValue,
+                viewModel.currentSteps.intValue,
                 0
             )
             Toast.makeText(this, getString(R.string.added_to_queue), Toast.LENGTH_SHORT).show()
@@ -619,7 +693,7 @@ class MainActivity : ComponentActivity() {
         var stylePath = File(filesDir, "$currentModelVersion/voice_styles/${viewModel.selectedVoiceFile.value}").absolutePath
         if (viewModel.isMixingEnabled.value) {
             val stylePath2 = File(filesDir, "$currentModelVersion/voice_styles/${viewModel.selectedVoiceFile2.value}").absolutePath
-            stylePath = "$stylePath;$stylePath2;${viewModel.mixAlpha.value}"
+            stylePath = "$stylePath;$stylePath2;${viewModel.mixAlpha.floatValue}"
         }
         launchPlaybackActivity(text, stylePath)
     }
@@ -628,8 +702,8 @@ class MainActivity : ComponentActivity() {
         val intent = Intent(this, PlaybackActivity::class.java).apply {
             putExtra(PlaybackActivity.EXTRA_TEXT, text)
             putExtra(PlaybackActivity.EXTRA_VOICE_PATH, stylePath)
-            putExtra(PlaybackActivity.EXTRA_SPEED, viewModel.currentSpeed.value)
-            putExtra(PlaybackActivity.EXTRA_STEPS, viewModel.currentSteps.value)
+            putExtra(PlaybackActivity.EXTRA_SPEED, viewModel.currentSpeed.floatValue)
+            putExtra(PlaybackActivity.EXTRA_STEPS, viewModel.currentSteps.intValue)
             putExtra(PlaybackActivity.EXTRA_LANG, viewModel.currentLang.value)
         }
         startActivity(intent)
@@ -640,12 +714,12 @@ class MainActivity : ComponentActivity() {
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
             if (!sharedText.isNullOrEmpty()) {
-                viewModel.inputText.value = sharedText
+                viewModel.inputText.value = prepareTextForTts(sharedText, viewModel.currentLang.value)
             }
         } else {
             val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: intent.data?.getQueryParameter("text")
             if (!text.isNullOrEmpty()) {
-                viewModel.inputText.value = text
+                viewModel.inputText.value = prepareTextForTts(text, viewModel.currentLang.value)
             }
         }
     }
@@ -653,32 +727,31 @@ class MainActivity : ComponentActivity() {
     private fun checkResumeState() {
         if (viewModel.isDownloading.value) return
 
-        val prefs = getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
         val lastText = prefs.getString("last_text", null)
-        val isPlaying = prefs.getBoolean("is_playing", false)
+        val isPlayingPref = prefs.getBoolean("is_playing", false)
 
-        if (!lastText.isNullOrEmpty() && isPlaying) {
-             AlertDialog.Builder(this)
-                .setTitle(getString(R.string.resume_title))
-                .setMessage(getString(R.string.resume_message))
-                .setPositiveButton(getString(R.string.yes)) { _, _ ->
-                    val intent = Intent(this, PlaybackActivity::class.java)
-                    intent.putExtra("is_resume", true)
-                    startActivity(intent)
-                }
-                .setNegativeButton(getString(R.string.no)) { _, _ ->
-                    getSharedPreferences("SupertonicPrefs", Context.MODE_PRIVATE).edit()
-                        .putBoolean("is_playing", false)
-                        .apply()
-                    val stopIntent = Intent(this, PlaybackService::class.java)
-                    stopIntent.action = "STOP_PLAYBACK"
-                    startService(stopIntent)
-                }
-                .show()
+        if (lastText.isNullOrEmpty()) {
+            viewModel.canResume.value = false
+            return
         }
+
+        // If service is already active, we just sync the mini player state
+        try {
+            if (playbackService != null && playbackService?.isServiceActive == true) {
+                runOnUiThread {
+                    viewModel.showMiniPlayer.value = true
+                    viewModel.miniPlayerTitle.value = lastText
+                    viewModel.canResume.value = false // Mini player handles it
+                }
+                return
+            }
+        } catch (e: Exception) { }
+
+        viewModel.canResume.value = isPlayingPref
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
@@ -687,6 +760,9 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (isBound) {
+            try {
+                playbackService?.removeListener(playbackListener)
+            } catch (_: Exception) { }
             unbindService(connection)
             isBound = false
         }

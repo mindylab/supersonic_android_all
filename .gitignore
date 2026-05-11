@@ -19,3 +19,15 @@ CLAUDE.md
 GEMINI.md
 .gemini_security/
 
+# Environment variables and secrets
+.env
+.env.*
+
+# IDE
+.idea/
+*.iws
+*.ipr
+
+# Build Artifacts
+app/release/
+
