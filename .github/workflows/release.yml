@@ -59,11 +59,9 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.10.2
 
       - name: Build Release
-        run: gradle assembleRelease bundleRelease
+        run: ./gradlew assembleRelease bundleRelease
 
       - name: Sign APK
         id: sign_apk
