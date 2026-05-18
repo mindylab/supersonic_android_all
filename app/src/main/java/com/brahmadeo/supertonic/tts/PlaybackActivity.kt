@@ -134,25 +134,14 @@ class PlaybackActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
+        setupUI()
 
-        currentText = intent.getStringExtra(EXTRA_TEXT) ?: ""
-        currentVoicePath = intent.getStringExtra(EXTRA_VOICE_PATH) ?: ""
-        currentSpeed = intent.getFloatExtra(EXTRA_SPEED, 1.0f)
-        currentSteps = intent.getIntExtra(EXTRA_STEPS, 5)
-        currentLang = intent.getStringExtra(EXTRA_LANG) ?: "en"
+        val intent = Intent(this, PlaybackService::class.java)
+        bindService(intent, connection, BIND_AUTO_CREATE)
+    }
 
-        if (intent.getBooleanExtra("is_resume", false) && currentText.isEmpty()) {
-             val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
-             currentText = prefs.getString("last_text", "") ?: ""
-             currentVoicePath = prefs.getString("last_voice_path", "") ?: ""
-             currentSpeed = prefs.getFloat("last_speed", 1.0f)
-             currentSteps = prefs.getInt("last_steps", 5)
-             currentLang = prefs.getString("last_lang", "en") ?: "en"
-             currentIndexState.intValue = prefs.getInt("last_index", 0)
-        }
-
-        setupList(currentText)
-
+    private fun setupUI() {
         setContent {
             SupertonicTheme(voiceFile = currentVoicePath) {
                 PlaybackScreen(
@@ -178,9 +167,36 @@ class PlaybackActivity : ComponentActivity() {
                 )
             }
         }
+    }
 
-        val intent = Intent(this, PlaybackService::class.java)
-        bindService(intent, connection, BIND_AUTO_CREATE)
+    private fun handleIntent(intent: Intent) {
+        val isResume = intent.getBooleanExtra("is_resume", false)
+        
+        if (isResume) {
+            val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
+            currentText = prefs.getString("last_text", "") ?: ""
+            currentVoicePath = prefs.getString("last_voice_path", "") ?: ""
+            currentSpeed = prefs.getFloat("last_speed", 1.0f)
+            currentSteps = prefs.getInt("last_steps", 5)
+            currentLang = prefs.getString("last_lang", "en") ?: "en"
+            currentIndexState.intValue = prefs.getInt("last_index", 0)
+        } else {
+            currentText = intent.getStringExtra(EXTRA_TEXT) ?: ""
+            currentVoicePath = intent.getStringExtra(EXTRA_VOICE_PATH) ?: ""
+            currentSpeed = intent.getFloatExtra(EXTRA_SPEED, 1.0f)
+            currentSteps = intent.getIntExtra(EXTRA_STEPS, 5)
+            currentLang = intent.getStringExtra(EXTRA_LANG) ?: "en"
+            
+            // Reset state for new playback
+            currentIndexState.intValue = -1
+            isExportingState.value = false
+        }
+
+        setupList(currentText)
+        
+        if (isBound && !isResume) {
+            startPlaybackFromIntent()
+        }
     }
 
     override fun onResume() {
@@ -335,5 +351,6 @@ class PlaybackActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleIntent(intent)
     }
 }

@@ -226,6 +226,10 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             
             stopPlayback(removeNotification = false)
             
+            val sentences = textNormalizer.splitIntoSentences(text, lang)
+            val totalSentences = sentences.size
+            val validStartIndex = if (startIndex in 0 until totalSentences) startIndex else 0
+            
             isSynthesizing = true
             isPlaying = true
             SupertonicTTS.setCancelled(false) 
@@ -234,6 +238,10 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             startForegroundService(getString(R.string.notif_synthesizing), false)
             notifyListenerState(false)
             
+            // Immediate progress update to clear stale UI state
+            currentSentenceIndex = validStartIndex
+            notifyListenerProgress(validStartIndex, totalSentences)
+            
             wakeLock?.acquire(10 * 60 * 1000L)
             
             if (!requestAudioFocus()) {
@@ -241,12 +249,6 @@ class PlaybackService : Service(), SupertonicTTS.ProgressListener, AudioManager.
             }
 
             synthesisJob = launch(Dispatchers.IO) {
-                val sentences = textNormalizer.splitIntoSentences(text, lang)
-                val totalSentences = sentences.size
-                
-                // Fix: If resume index is out of bounds, restart from beginning
-                val validStartIndex = if (startIndex in 0 until totalSentences) startIndex else 0
-
                 // Channel size 10 to allow producer to stay ahead
                 val channel = kotlinx.coroutines.channels.Channel<PlaybackItem>(10)
                 val preBufferComplete = CompletableDeferred<Unit>()
