@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -98,6 +98,14 @@ jobs:
         run: |
           mv ${{ steps.sign_apk.outputs.signedReleaseFile }} app/build/outputs/apk/release/Supertonic-${{ github.ref_name }}.apk
           mv ${{ steps.sign_bundle.outputs.signedReleaseFile }} app/build/outputs/bundle/release/Supertonic-${{ github.ref_name }}.aab
+
+      - name: Upload Test Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Supertonic-Build-${{ github.ref_name }}
+          path: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
