@@ -39,6 +39,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.setValue
 import com.brahmadeo.supertonic.tts.ui.theme.SupertonicTheme
 import com.brahmadeo.supertonic.tts.utils.EbookManager
 import com.brahmadeo.supertonic.tts.utils.RecentBook
@@ -67,18 +71,30 @@ class EbookLibraryActivity : ComponentActivity() {
         }
     }
 
+    private val recentBooksState = mutableStateOf<List<RecentBook>>(emptyList())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
             SupertonicTheme {
                 LibraryScreen(
+                    recentBooks = recentBooksState.value,
                     onBack = { finish() },
                     onOpenNew = { ebookPickerLauncher.launch(arrayOf("application/epub+zip", "application/pdf")) },
-                    onBookClick = { openBook(it.path) }
+                    onBookClick = { openBook(it.path) },
+                    onDeleteBook = { book ->
+                        EbookManager.removeBook(this, book.path)
+                        recentBooksState.value = EbookManager.getRecentBooks(this)
+                    }
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        recentBooksState.value = EbookManager.getRecentBooks(this)
     }
 
     private fun openBook(path: String) {
@@ -91,11 +107,13 @@ class EbookLibraryActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun LibraryScreen(
+        recentBooks: List<RecentBook>,
         onBack: () -> Unit,
         onOpenNew: () -> Unit,
-        onBookClick: (RecentBook) -> Unit
+        onBookClick: (RecentBook) -> Unit,
+        onDeleteBook: (RecentBook) -> Unit
     ) {
-        val recentBooks by remember { mutableStateOf(EbookManager.getRecentBooks(this@EbookLibraryActivity)) }
+        var bookToDelete by remember { mutableStateOf<RecentBook?>(null) }
 
         Scaffold(
             topBar = {
@@ -133,12 +151,44 @@ class EbookLibraryActivity : ComponentActivity() {
                             headlineContent = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                             supportingContent = { Text(book.path, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             leadingContent = { Icon(Icons.Default.Book, contentDescription = null) },
+                            trailingContent = {
+                                IconButton(onClick = { bookToDelete = book }) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete book",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
                             modifier = Modifier.clickable { onBookClick(book) }
                         )
                         HorizontalDivider()
                     }
                 }
             }
+        }
+
+        if (bookToDelete != null) {
+            AlertDialog(
+                onDismissRequest = { bookToDelete = null },
+                title = { Text("Delete Book") },
+                text = { Text("Are you sure you want to remove \"${bookToDelete?.title}\" from the list?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            bookToDelete?.let { onDeleteBook(it) }
+                            bookToDelete = null
+                        }
+                    ) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { bookToDelete = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

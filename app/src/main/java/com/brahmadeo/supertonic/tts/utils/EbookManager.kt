@@ -61,6 +61,34 @@ object EbookManager {
         }
     }
 
+    fun removeBook(context: Context, path: String) {
+        try {
+            val books = getRecentBooks(context).toMutableList()
+            books.removeAll { it.path == path }
+            
+            val jsonArray = JSONArray()
+            books.forEach {
+                val obj = JSONObject()
+                obj.put("title", it.title)
+                obj.put("path", it.path)
+                jsonArray.put(obj)
+            }
+            
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit {
+                    putString(KEY_RECENT_BOOKS, jsonArray.toString())
+                }
+
+            // Also, if the file resides inside our private app directory, delete it.
+            val file = File(path)
+            if (file.exists() && file.absolutePath.startsWith(context.filesDir.absolutePath)) {
+                file.delete()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun importBook(context: Context, uri: Uri): String? {
         try {
             val contentResolver = context.contentResolver
