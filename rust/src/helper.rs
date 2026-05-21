@@ -8,8 +8,15 @@ use serde_json;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use anyhow::{Result, Context};
-use unicode_normalization::UnicodeNormalization;
+use anyhow::{Result, Context, bail};
+use crate::lang::get_normalizer;
+
+// Available languages for multilingual TTS
+pub const AVAILABLE_LANGS: &[&str] = &["en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es", "et", "fi", "fr", "hi", "hr", "hu", "id", "it", "lt", "lv", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi", "na"];
+
+pub fn is_valid_lang(lang: &str) -> bool {
+    AVAILABLE_LANGS.contains(&lang)
+}
 use hound::{WavWriter, WavSpec, SampleFormat};
 use rand_distr::{Distribution, Normal};
 use regex::Regex;
@@ -113,243 +120,17 @@ impl UnicodeProcessor {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum QuoteType {
-    Opening,
-    Closing,
-    Ambiguous,
-}
-
-fn classify_quote(chars: &[char], i: usize) -> QuoteType {
-    if chars.is_empty() || i >= chars.len() {
-        return QuoteType::Ambiguous;
-    }
-    
-    let has_before = i > 0;
-    let has_after = i + 1 < chars.len();
-    
-    let char_before = if has_before { Some(chars[i - 1]) } else { None };
-    let char_after = if has_after { Some(chars[i + 1]) } else { None };
-    
-    let before_is_ws = char_before.map_or(true, |c| c.is_whitespace());
-    let after_is_ws = char_after.map_or(true, |c| c.is_whitespace());
-    
-    // Check for opening punctuation/symbols that typically precede opening quotes.
-    // Redundant brackets [ and underscore _ are not checked because they are replaced earlier.
-    let before_is_open_punc = char_before.map_or(false, |c| "({,:-¿¡「『【〈《‹«".contains(c));
-    
-    // Check for closing punctuation/symbols that typically follow closing quotes.
-    // Redundant bracket ] and backslash are not checked because they are replaced/removed earlier.
-    let after_is_close_punc = char_after.map_or(false, |c| ")}.,!?:;-…。」』】〉》›»".contains(c));
-
-    let is_opening = (before_is_ws || before_is_open_punc) && !after_is_ws;
-    let is_closing = (after_is_ws || after_is_close_punc) && !before_is_ws;
-
-    if is_opening && !is_closing {
-        QuoteType::Opening
-    } else if is_closing && !is_opening {
-        QuoteType::Closing
-    } else {
-        QuoteType::Ambiguous
-    }
-}
-
-fn remove_unmatched_quotes(text: &str) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let mut to_remove = std::collections::HashSet::new();
-
-    // 1. Process double quotes '"'
-    let mut double_quotes = Vec::new();
-    for (i, &c) in chars.iter().enumerate() {
-        if c == '"' {
-            double_quotes.push(i);
-        }
-    }
-
-    if double_quotes.len() % 2 != 0 {
-        let mut open_stack = Vec::new();
-        for &idx in &double_quotes {
-            let q_type = classify_quote(&chars, idx);
-            match q_type {
-                QuoteType::Opening => {
-                    open_stack.push(idx);
-                }
-                QuoteType::Closing => {
-                    if open_stack.is_empty() {
-                        to_remove.insert(idx);
-                    } else {
-                        open_stack.pop();
-                    }
-                }
-                QuoteType::Ambiguous => {
-                    if open_stack.is_empty() {
-                        open_stack.push(idx);
-                    } else {
-                        open_stack.pop();
-                    }
-                }
-            }
-        }
-        // Any remaining open quotes are unmatched
-        for idx in open_stack {
-            to_remove.insert(idx);
-        }
-    }
-
-    // 2. Process single quotes '\'' (excluding internal apostrophes)
-    let mut single_quotes = Vec::new();
-    for (i, &c) in chars.iter().enumerate() {
-        if c == '\'' {
-            // Check if it is an internal apostrophe
-            let is_internal = if i > 0 && i + 1 < chars.len() {
-                chars[i - 1].is_alphanumeric() && chars[i + 1].is_alphanumeric()
-            } else {
-                false
-            };
-            if !is_internal {
-                single_quotes.push(i);
-            }
-        }
-    }
-
-    if single_quotes.len() % 2 != 0 {
-        let mut open_stack = Vec::new();
-        for &idx in &single_quotes {
-            let q_type = classify_quote(&chars, idx);
-            match q_type {
-                QuoteType::Opening => {
-                    open_stack.push(idx);
-                }
-                QuoteType::Closing => {
-                    if open_stack.is_empty() {
-                        to_remove.insert(idx);
-                    } else {
-                        open_stack.pop();
-                    }
-                }
-                QuoteType::Ambiguous => {
-                    if open_stack.is_empty() {
-                        open_stack.push(idx);
-                    } else {
-                        open_stack.pop();
-                    }
-                }
-            }
-        }
-        // Any remaining open quotes are unmatched
-        for idx in open_stack {
-            to_remove.insert(idx);
-        }
-    }
-
-    // Reconstruct string without the marked indices
-    let mut result = String::new();
-    for (i, &c) in chars.iter().enumerate() {
-        if !to_remove.contains(&i) {
-            result.push(c);
-        }
-    }
-    result
-}
-
 pub fn preprocess_text(text: &str, lang: &str) -> Result<String> {
-    // Revert to NFKD normalization as required for Korean Jamo decomposition
-    let mut text: String = text.nfkd().collect();
-
-    // 1. Remove emojis (wide Unicode range) - Safe for all languages
-    static EMOJI_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    let emoji_pattern = EMOJI_RE.get_or_init(|| Regex::new(r"[\x{1F600}-\x{1F64F}\x{1F300}-\x{1F5FF}\x{1F680}-\x{1F6FF}\x{1F700}-\x{1F77F}\x{1F780}-\x{1F7FF}\x{1F800}-\x{1F8FF}\x{1F900}-\x{1F9FF}\x{1FA00}-\x{1FA6F}\x{1FA70}-\x{1FAFF}\x{2600}-\x{26FF}\x{2700}-\x{27BF}\x{1F1E6}-\x{1F1FF}]+").unwrap());
-    text = emoji_pattern.replace_all(&text, "").to_string();
-
-    // 2. Replace typographic quotes, dashes, and brackets - Safe for all languages
-    let replacements = [
-        ("–", "-"),      // en dash
-        ("‑", "-"),      // non-breaking hyphen
-        ("—", ", "),     // em dash -> comma (Natural pause)
-        ("_", " "),      // underscore
-        ("\u{201C}", "\""),     // left double quote
-        ("\u{201D}", "\""),     // right double quote
-        ("\u{2018}", "'"),      // left single quote
-        ("\u{2019}", "'"),      // right single quote
-        ("´", "'"),      // acute accent
-        ("`", "'"),      // grave accent
-        ("[", " "),      // left bracket
-        ("]", " "),      // right bracket
-        ("|", " "),      // vertical bar
-        ("/", " "),      // slash
-        ("#", " "),      // hash
-        ("→", " "),      // right arrow
-        ("←", " "),      // left arrow
-    ];
-
-    for (from, to) in &replacements {
-        text = text.replace(from, to);
+    // Validate language
+    if !is_valid_lang(lang) {
+        bail!("Invalid language: {}. Available: {:?}", lang, AVAILABLE_LANGS);
     }
-
-    // 3. Remove special symbols - Safe for all languages
-    let special_symbols = ["♥", "☆", "♡", "©", "\\"];
-    for symbol in &special_symbols {
-        text = text.replace(symbol, "");
+    let normalizer = get_normalizer(lang);
+    let mut preprocessed = normalizer.preprocess(text);
+    if normalizer.should_wrap_tags() {
+        preprocessed = format!("<{}>{}</{}>", lang, preprocessed, lang);
     }
-
-    // 4. English-specific expression replacements
-    if lang == "en" {
-        let expr_replacements = [
-            ("@", " at "),
-            ("e.g.,", "for example, "),
-            ("i.e.,", "that is, "),
-        ];
-
-        for (from, to) in &expr_replacements {
-            text = text.replace(from, to);
-        }
-    }
-
-    // 5. Spacing around punctuation - Safe for all languages
-    // OPTIMIZATION: Use fast string replacements instead of expensive regex compilations
-    text = text.replace(" , ", ",");
-    text = text.replace(" . ", ".");
-    text = text.replace(" ! ", "!");
-    text = text.replace(" ? ", "?");
-    text = text.replace(" ; ", ";");
-    text = text.replace(" : ", ":");
-    text = text.replace(" ' ", "'");
-
-    // Remove duplicate quotes
-    while text.contains("\"\"") {
-        text = text.replace("\"\"", "\"");
-    }
-    while text.contains("''") {
-        text = text.replace("''", "'");
-    }
-    while text.contains("``") {
-        text = text.replace("``", "`");
-    }
-
-    // Remove extra spaces
-    static WHITESPACE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    let whitespace_re = WHITESPACE_RE.get_or_init(|| Regex::new(r"\s+").unwrap());
-    text = whitespace_re.replace_all(&text, " ").to_string();
-    text = text.trim().to_string();
-
-    // Remove unmatched double/single quotes to avoid breaking model on text chunk splits
-    text = remove_unmatched_quotes(&text);
-
-    // 6. Ending punctuation check - Safe for all languages except Korean
-    if !text.is_empty() && lang != "ko" {
-        static ENDS_WITH_PUNCT_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-        let ends_with_punct = ENDS_WITH_PUNCT_RE.get_or_init(|| Regex::new(r#"[.!?;:,'"\u{201C}\u{201D}\u{2018}\u{2019})\\\]}…。」』】〉》›»]$"#).unwrap());
-        if !ends_with_punct.is_match(&text) {
-            text.push('.');
-        }
-    }
-
-    // Wrap text with language tags - V2 needs tags, V1 (English) does not
-    if lang != "en" {
-        text = format!("<{}>{}</{}>", lang, text, lang);
-    }
-
-    Ok(text)
+    Ok(preprocessed)
 }
 
 pub fn text_to_unicode_values(text: &str) -> Vec<usize> {
@@ -461,16 +242,9 @@ pub fn write_wav_file<P: AsRef<Path>>(
 // Text Chunking
 // ============================================================================ 
 
-const MAX_CHUNK_LENGTH: usize = 300;
-
-const ABBREVIATIONS: &[&str] = &[
-    "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
-    "St.", "Ave.", "Rd.", "Blvd.", "Dept.", "Inc.", "Ltd.",
-    "Co.", "Corp.", "etc.", "vs.", "i.e.", "e.g.", "Ph.D.",
-];
-
-pub fn chunk_text(text: &str, max_len: Option<usize>) -> Vec<String> {
-    let max_len = max_len.unwrap_or(MAX_CHUNK_LENGTH);
+pub fn chunk_text(text: &str, lang: &str, max_len: Option<usize>) -> Vec<String> {
+    let normalizer = get_normalizer(lang);
+    let max_len = max_len.unwrap_or_else(|| normalizer.max_chunk_len());
     let text = text.trim();
     
     if text.is_empty() {
@@ -495,7 +269,7 @@ pub fn chunk_text(text: &str, max_len: Option<usize>) -> Vec<String> {
         }
 
         // Split by sentences
-        let sentences = split_sentences(para);
+        let sentences = split_sentences(para, lang);
         let mut current = String::new();
         let mut current_len = 0;
 
@@ -592,50 +366,8 @@ pub fn chunk_text(text: &str, max_len: Option<usize>) -> Vec<String> {
     }
 }
 
-fn split_sentences(text: &str) -> Vec<String> {
-    static SENTENCE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    let re = SENTENCE_RE.get_or_init(|| Regex::new(r"([.!?]['\u{2019}\u{201D}\u{0022}\)\}\]]?)\s+").unwrap());
-
-    // Find all matches
-    let matches: Vec<_> = re.find_iter(text).collect();
-    if matches.is_empty() {
-        return vec![text.to_string()];
-    }
-    
-    let mut sentences = Vec::new();
-    let mut last_end = 0;
-    
-    for m in matches {
-        // Get the text before the punctuation
-        let before_punc = &text[last_end..m.start()];
-        
-        // Check if this ends with an abbreviation
-        let mut is_abbrev = false;
-        for abbrev in ABBREVIATIONS {
-            let combined = format!("{}{}", before_punc.trim(), &text[m.start()..m.start()+1]);
-            if combined.ends_with(abbrev) {
-                is_abbrev = true;
-                break;
-            }
-        }
-        
-        if !is_abbrev {
-            // This is a real sentence boundary
-            sentences.push(text[last_end..m.end()].to_string());
-            last_end = m.end();
-        }
-    }
-    
-    // Add the remaining text
-    if last_end < text.len() {
-        sentences.push(text[last_end..].to_string());
-    }
-    
-    if sentences.is_empty() {
-        vec![text.to_string()]
-    } else {
-        sentences
-    }
+fn split_sentences(text: &str, lang: &str) -> Vec<String> {
+    get_normalizer(lang).split_sentences(text)
 }
 
 // ============================================================================
@@ -839,8 +571,9 @@ impl TextToSpeech {
         mut callback: F,
     ) -> Result<(Vec<f32>, f32)> 
     where F: FnMut(usize, usize, Option<&[f32]>) -> bool {
-        let max_len = if lang == "ko" { 120 } else { 300 };
-        let chunks = chunk_text(text, Some(max_len));
+        let normalizer = get_normalizer(lang);
+        let max_len = normalizer.max_chunk_len();
+        let chunks = chunk_text(text, lang, Some(max_len));
         let num_chunks = chunks.len();
         
         let mut wav_cat: Vec<f32> = Vec::new();
@@ -1061,6 +794,7 @@ pub fn load_text_to_speech(onnx_dir: &str, use_gpu: bool, use_xnnpack: bool, ort
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lang::remove_unmatched_quotes;
 
     #[test]
     fn test_preprocess_text_french_apostrophe() {
@@ -1166,6 +900,38 @@ mod tests {
         let input_single = "He talked to her first.'";
         let result_single = preprocess_text(input_single, "en").unwrap();
         assert_eq!(result_single, "He talked to her first.");
+    }
+
+    #[test]
+    fn test_preprocess_text_v3_languages() {
+        // Test Japanese / V3 tag wrapping
+        let result_ja = preprocess_text("こんにちは", "ja").unwrap();
+        assert_eq!(result_ja, "<ja>こんにちは.</ja>");
+
+        // Test Japanese / V3 preserving existing Japanese full stop
+        let result_ja_punct = preprocess_text("こんにちは。", "ja").unwrap();
+        assert_eq!(result_ja_punct, "<ja>こんにちは。</ja>");
+
+        // Test Arabic / V3 tag wrapping
+        let result_ar = preprocess_text("مرحبا", "ar").unwrap();
+        assert_eq!(result_ar, "<ar>مرحبا.</ar>");
+
+        // Test Hindi / V3 tag wrapping and check that purna viram (U+0964) is treated as punctuation
+        let result_hi = preprocess_text("पहला पड़ाव था- UAE।", "hi").unwrap();
+        assert_eq!(result_hi, "<hi>पहला पड़ाव था- UAE।</hi>");
+
+        // Test that invalid language code fails
+        assert!(preprocess_text("hello", "invalid").is_err());
+    }
+
+    #[test]
+    fn test_split_sentences_hindi() {
+        let input = "पहला पड़ाव था- UAE। मोदी यहां करीब 3 घंटे रुके। राष्ट्रपति शेख मोहम्मद बिन जायद से मुलाकात की।";
+        let sentences = split_sentences(input, "hi");
+        assert_eq!(sentences.len(), 3);
+        assert_eq!(sentences[0].trim(), "पहला पड़ाव था- UAE।");
+        assert_eq!(sentences[1].trim(), "मोदी यहां करीब 3 घंटे रुके।");
+        assert_eq!(sentences[2].trim(), "राष्ट्रपति शेख मोहम्मद बिन जायद से मुलाकात की।");
     }
 }
 

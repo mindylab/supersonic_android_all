@@ -6,6 +6,7 @@ use log::LevelFilter;
 use std::time::Instant;
 
 mod helper;
+mod lang;
 mod thermal;
 
 use helper::{load_text_to_speech, load_voice_style, load_and_mix_voice_styles, TextToSpeech};
@@ -251,5 +252,30 @@ pub extern "system" fn Java_com_brahmadeo_supertonic_tts_SupertonicTTS_close(
         unsafe {
             let _ = Box::from_raw(ptr as *mut SupertonicEngine);
         }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_brahmadeo_supertonic_tts_SupertonicTTS_nativeChunkText(
+    mut env: JNIEnv,
+    _class: JClass,
+    text: JString,
+    lang: JString,
+) -> jni::sys::jstring {
+    let text: String = match env.get_string(&text) {
+        Ok(s) => s.into(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let lang: String = match env.get_string(&lang) {
+        Ok(s) => s.into(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let chunks = helper::chunk_text(&text, &lang, None);
+    let joined = chunks.join("\u{001E}");
+
+    match env.new_string(&joined) {
+        Ok(jstr) => jstr.into_raw(),
+        Err(_) => std::ptr::null_mut(),
     }
 }
