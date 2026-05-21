@@ -9,6 +9,7 @@ import android.util.Log
 import android.content.Context
 import android.os.Build
 import com.brahmadeo.supertonic.tts.SupertonicTTS
+import com.brahmadeo.supertonic.tts.utils.AssetManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,11 +48,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
             copyAssets()
             val prefs = attributionContext.getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
             val savedLang = prefs.getString("selected_lang", "en") ?: "en"
-            val modelVersion = when (savedLang) {
-                "en" -> "v1"
-                "fr", "pt", "es", "ko" -> "v2"
-                else -> "v3"
-            }
+            val modelVersion = AssetManager.getModelVersionForLanguage(savedLang)
 
             val modelPath = File(filesDir, "$modelVersion/onnx").absolutePath
             val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
@@ -68,11 +65,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
     private fun getCurrentModelVersion(): String {
         val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
         val savedLang = prefs.getString("selected_lang", "en") ?: "en"
-        return when (savedLang) {
-            "en" -> "v1"
-            "fr", "pt", "es", "ko" -> "v2"
-            else -> "v3"
-        }
+        return AssetManager.getModelVersionForLanguage(savedLang)
     }
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
@@ -168,11 +161,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         if (voiceName.contains("-supertonic-")) {
             val langPrefix = voiceName.substringBefore("-supertonic-")
             val styleName = voiceName.substringAfter("-supertonic-")
-            val modelVersion = when (langPrefix) {
-                "en" -> "v1"
-                "fr", "pt", "es", "ko" -> "v2"
-                else -> "v3"
-            }
+            val modelVersion = AssetManager.getModelVersionForLanguage(langPrefix)
             val file = File(filesDir, "$modelVersion/voice_styles/$styleName.json")
             if (file.exists()) return TextToSpeech.SUCCESS
         }
@@ -321,17 +310,9 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
         val modelVersion = if (requestedVoice != null && requestedVoice.contains("-supertonic-")) {
              val langPrefix = requestedVoice.substringBefore("-supertonic-")
-             when (langPrefix) {
-                 "en" -> "v1"
-                 "fr", "pt", "es", "ko" -> "v2"
-                 else -> "v3"
-             }
+             AssetManager.getModelVersionForLanguage(langPrefix)
         } else {
-             when (requestedLang) {
-                 "en" -> "v1"
-                 "fr", "pt", "es", "ko" -> "v2"
-                 else -> "v3"
-             }
+             AssetManager.getModelVersionForLanguage(requestedLang)
         }
         
         val voiceFile = if (requestedVoice != null && requestedVoice.contains("-supertonic-")) {

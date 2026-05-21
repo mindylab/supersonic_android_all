@@ -9,6 +9,15 @@ import java.io.FileOutputStream
 import java.net.URL
 
 object AssetManager {
+    fun getModelVersionForLanguage(lang: String): String {
+        val cleanLang = lang.lowercase().substringBefore("-").substringBefore("_")
+        return when (cleanLang) {
+            "en" -> "v1"
+            "fr", "pt", "es", "ko" -> "v2"
+            else -> "v3"
+        }
+    }
+
     private const val TAG = "AssetManager"
     private const val BASE_URL_V1 = "https://huggingface.co/Supertone/supertonic/resolve/main"
     private const val BASE_URL_V2 = "https://huggingface.co/Supertone/supertonic-2/resolve/main"

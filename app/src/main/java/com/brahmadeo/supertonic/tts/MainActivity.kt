@@ -214,11 +214,7 @@ class MainActivity : ComponentActivity() {
 
         // Initial setup based on saved language
         val savedLang = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE).getString("selected_lang", MainViewModel.DEFAULT_LANG) ?: MainViewModel.DEFAULT_LANG
-        currentModelVersion = when (savedLang) {
-            "en" -> "v1"
-            "fr", "pt", "es", "ko" -> "v2"
-            else -> "v3"
-        }
+        currentModelVersion = AssetManager.getModelVersionForLanguage(savedLang)
 
         // On FIRST LAUNCH, we check/download the required version.
         // If English (default), we ensure V1 is ready.
@@ -278,12 +274,9 @@ class MainActivity : ComponentActivity() {
 
                     if (viewModel.showV2ConfirmDialog.value) {
                         androidx.compose.material3.AlertDialog(
-                            onDismissRequest = { 
-                                viewModel.showV2ConfirmDialog.value = false
-                                viewModel.currentLang.value = "en"
-                                saveStringPref("selected_lang", "en")
-                                switchModel("v1")
-                            },
+                             onDismissRequest = { 
+                                 viewModel.showV2ConfirmDialog.value = false
+                             },
                             title = { Text(getString(R.string.v2_download_title)) },
                             text = { Text(getString(R.string.v2_download_message)) },
                             confirmButton = {
@@ -298,12 +291,9 @@ class MainActivity : ComponentActivity() {
                                 }) { Text(getString(R.string.v2_download_button)) }
                             },
                             dismissButton = {
-                                TextButton(onClick = {
-                                    viewModel.showV2ConfirmDialog.value = false
-                                    viewModel.currentLang.value = "en"
-                                    saveStringPref("selected_lang", "en")
-                                    switchModel("v1")
-                                }) { Text(getString(R.string.cancel)) }
+                                 TextButton(onClick = {
+                                     viewModel.showV2ConfirmDialog.value = false
+                                 }) { Text(getString(R.string.cancel)) }
                             }
                         )
                     }
@@ -337,12 +327,9 @@ class MainActivity : ComponentActivity() {
 
                     if (viewModel.showV3ConfirmDialog.value) {
                         androidx.compose.material3.AlertDialog(
-                            onDismissRequest = { 
-                                viewModel.showV3ConfirmDialog.value = false
-                                viewModel.currentLang.value = "en"
-                                saveStringPref("selected_lang", "en")
-                                switchModel("v1")
-                            },
+                             onDismissRequest = { 
+                                 viewModel.showV3ConfirmDialog.value = false
+                             },
                             title = { Text(getString(R.string.v3_download_title)) },
                             text = { Text(getString(R.string.v3_download_message)) },
                             confirmButton = {
@@ -357,12 +344,9 @@ class MainActivity : ComponentActivity() {
                                 }) { Text(getString(R.string.v3_download_button)) }
                             },
                             dismissButton = {
-                                TextButton(onClick = {
-                                    viewModel.showV3ConfirmDialog.value = false
-                                    viewModel.currentLang.value = "en"
-                                    saveStringPref("selected_lang", "en")
-                                    switchModel("v1")
-                                }) { Text(getString(R.string.cancel)) }
+                                 TextButton(onClick = {
+                                     viewModel.showV3ConfirmDialog.value = false
+                                 }) { Text(getString(R.string.cancel)) }
                             }
                         )
                     }
@@ -419,11 +403,7 @@ class MainActivity : ComponentActivity() {
                         languages = localizedLanguages,
                         currentLangCode = viewModel.currentLang.value,
                         onLangChange = { lang ->
-                            val targetVersion = when (lang) {
-                                "en" -> "v1"
-                                "fr", "pt", "es", "ko" -> "v2"
-                                else -> "v3"
-                            }
+                            val targetVersion = AssetManager.getModelVersionForLanguage(lang)
                             if (targetVersion == "v1") {
                                 viewModel.currentLang.value = lang
                                 saveStringPref("selected_lang", lang)

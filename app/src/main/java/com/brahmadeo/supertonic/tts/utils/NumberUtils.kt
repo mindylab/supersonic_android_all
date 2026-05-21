@@ -47,7 +47,7 @@ object NumberUtils {
         if (parts.size == 2) {
             val whole = convert(parts[0].toLong())
             val fraction = parts[1].map { 
-                if (it.isDigit()) units[it.toString().toInt()] else "" 
+                if (it.isDigit()) units[it.digitToInt()] else "" 
             }.joinToString(" ")
             return "$whole point $fraction"
         }
@@ -127,8 +127,8 @@ object NumberUtils {
             val whole = convertHindi(parts[0].toLong())
             val fraction = parts[1].map { 
                 if (it.isDigit()) {
-                    val digit = it.toString().toInt()
-                    if (digit == 0) "शून्य" else hindi0to99[digit]
+                    val digit = it.digitToInt()
+                    hindi0to99[digit]
                 } else "" 
             }.filter { it.isNotEmpty() }.joinToString(" ")
             return "$whole दशमलव $fraction"

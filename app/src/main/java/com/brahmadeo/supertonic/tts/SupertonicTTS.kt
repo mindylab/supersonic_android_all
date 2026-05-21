@@ -8,6 +8,10 @@ object SupertonicTTS {
     private var nativePtr: Long = 0
     private var currentModelPath: String? = null
 
+    private val HINDI_SPLIT_PATTERN = Pattern.compile("([.!?\\u0964\\u0965]['\\u2019\\u201D\\u0022)}\\]]?)\\s+")
+    private val JAPANESE_SPLIT_PATTERN = Pattern.compile("([。！？][」』）』）｝\\]]?)\\s*")
+    private val DEFAULT_SPLIT_PATTERN = Pattern.compile("([.!?]['\\u2019\\u201D\\u0022)}\\]]?)\\s+")
+
     init {
         try {
             System.loadLibrary("onnxruntime")
@@ -196,18 +200,9 @@ object SupertonicTTS {
         
         val normalizedLang = lang.lowercase()
         val splitPattern = when {
-            normalizedLang.startsWith("hi") -> {
-                // Hindi splitting on dandas and standard punctuation
-                Pattern.compile("([.!?\\u0964\\u0965]['\\u2019\\u201D\\u0022)}\\]]?)\\s+")
-            }
-            normalizedLang.startsWith("ja") -> {
-                // Japanese splitting on 。！？ with optional trailing space
-                Pattern.compile("([。！？][」』）』）｝\\]]?)\\s*")
-            }
-            else -> {
-                // Default splitting on .!?
-                Pattern.compile("([.!?]['\\u2019\\u201D\\u0022)}\\]]?)\\s+")
-            }
+            normalizedLang.startsWith("hi") -> HINDI_SPLIT_PATTERN
+            normalizedLang.startsWith("ja") -> JAPANESE_SPLIT_PATTERN
+            else -> DEFAULT_SPLIT_PATTERN
         }
         
         val abbreviations = if (normalizedLang.startsWith("en")) {
@@ -283,11 +278,7 @@ object SupertonicTTS {
                 }
                 
                 // Split long sentences by comma or space
-                val commaRegex = if (normalizedLang.startsWith("ja")) {
-                    Regex("(?<=[\\u3001,])\\s*") // Japanese comma is U+3001 (、)
-                } else {
-                    Regex("(?<=,)\\s+")
-                }
+                val commaRegex = Regex("[,\\u3001]")
                 val parts = s.split(commaRegex)
                 for (part in parts) {
                     val p = part.trim()
