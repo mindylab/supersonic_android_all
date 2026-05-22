@@ -18,7 +18,7 @@ class CheckDataActivity : Activity() {
 
         val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
         val savedLang = prefs.getString("selected_lang", "en") ?: "en"
-        val modelVersion = if (savedLang == "en") "v1" else "v2"
+        val modelVersion = com.brahmadeo.supertonic.tts.utils.AssetManager.getModelVersionForLanguage(savedLang)
 
         val availableVoices = ArrayList<String>()
         val unavailableVoices = ArrayList<String>()
