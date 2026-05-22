@@ -15,6 +15,40 @@ RepoType: git
 Repo: https://github.com/DevGitPit/supertonic-android
 
 Builds:
+  - versionName: 3.1.0
+    versionCode: 15
+    commit: v3.1.0
+    sudo:
+      - apt-get update
+      - apt-get install -y gcc libc-dev rustup pkg-config libssl-dev
+    gradle:
+      - yes
+    output: app/build/outputs/apk/release/app-release-unsigned.apk
+    prebuild:
+      - rustup default 1.94.1
+      - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+      - cd rust
+      - cargo vendor vendor
+      - mkdir -p rust/.cargo
+      - echo '[target.aarch64-linux-android]' > rust/.cargo/config.toml
+      - echo 'linker = "aarch64-linux-android34-clang"' >> rust/.cargo/config.toml
+      - echo '[target.armv7-linux-androideabi]' >> rust/.cargo/config.toml
+      - echo 'linker = "armv7a-linux-androideabi34-clang"' >> rust/.cargo/config.toml
+      - echo '[target.i686-linux-android]' >> rust/.cargo/config.toml
+      - echo 'linker = "i686-linux-android34-clang"' >> rust/.cargo/config.toml
+      - echo '[target.x86_64-linux-android]' >> rust/.cargo/config.toml
+      - echo 'linker = "x86_64-linux-android34-clang"' >> rust/.cargo/config.toml
+      - echo '[source.crates-io]' >> rust/.cargo/config.toml
+      - echo 'replace-with = "vendored-sources"' >> rust/.cargo/config.toml
+      - echo '[source.vendored-sources]' >> rust/.cargo/config.toml
+      - echo 'directory = "vendor"' >> rust/.cargo/config.toml
+    scanignore:
+      - rust/vendor/regex-automata/tests/fuzz/testdata
+      - rust/vendor/vcpkg/test-data
+    scandelete:
+      - rust/vendor
+    ndk: r29
+
   - versionName: 3.0.2
     versionCode: 14
     commit: v3.0.2
@@ -51,5 +85,5 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 3.0.2
-CurrentVersionCode: 14
+CurrentVersion: 3.1.0
+CurrentVersionCode: 15

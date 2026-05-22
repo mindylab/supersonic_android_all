@@ -98,8 +98,8 @@ android {
         applicationId "com.brahmadeo.supertonic.tts"
         minSdk 24
         targetSdk 36
-        versionCode 14
-        versionName "3.0.2"
+        versionCode 15
+        versionName "3.1.0"
         
         ndk {
             abiFilters "arm64-v8a", "armeabi-v7a", "x86", "x86_64"
@@ -148,6 +148,10 @@ android {
             pickFirst '**/libsupertonic_tts.so'
         }
     }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 }
 
 afterEvaluate {
@@ -169,6 +173,7 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     implementation 'androidx.core:core-ktx:1.18.0'
     implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.10.0'
     implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
     implementation 'androidx.media:media:1.8.0'
@@ -194,4 +199,5 @@ dependencies {
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
+    testImplementation 'junit:junit:4.13.2'
 }

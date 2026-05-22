@@ -9,6 +9,7 @@ import android.util.Log
 import android.content.Context
 import android.os.Build
 import com.brahmadeo.supertonic.tts.SupertonicTTS
+import com.brahmadeo.supertonic.tts.utils.AssetManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,7 +48,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
             copyAssets()
             val prefs = attributionContext.getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
             val savedLang = prefs.getString("selected_lang", "en") ?: "en"
-            val modelVersion = if (savedLang == "en") "v1" else "v2"
+            val modelVersion = AssetManager.getModelVersionForLanguage(savedLang)
 
             val modelPath = File(filesDir, "$modelVersion/onnx").absolutePath
             val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
@@ -64,7 +65,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
     private fun getCurrentModelVersion(): String {
         val prefs = getSharedPreferences("SupertonicPrefs", MODE_PRIVATE)
         val savedLang = prefs.getString("selected_lang", "en") ?: "en"
-        return if (savedLang == "en") "v1" else "v2"
+        return AssetManager.getModelVersionForLanguage(savedLang)
     }
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
@@ -90,6 +91,25 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
             }
         }
 
+        // 3. Multilingual (v3) Path
+        val v3Prefixes = listOf(
+            "ja", "jpn", "ar", "ara", "bg", "bul", "cs", "ces", "cze", "da", "dan", "de", "deu", "ger",
+            "el", "ell", "gre", "et", "est", "fi", "fin", "hi", "hin", "hr", "hrv", "hu", "hun", "id", "ind",
+            "it", "ita", "lt", "lit", "lv", "lav", "nl", "nld", "dut", "pl", "pol", "ro", "ron", "rum", "ru", "rus",
+            "sk", "slk", "slo", "sl", "slv", "sv", "swe", "tr", "tur", "uk", "ukr", "vi", "vie"
+        )
+        if (modelVersion == "v3") {
+            if (v3Prefixes.any { language.startsWith(it) }) {
+                val v3Dir = File(filesDir, "v3/onnx")
+                return if (v3Dir.exists()) {
+                    if (!country.isNullOrEmpty()) TextToSpeech.LANG_COUNTRY_AVAILABLE else TextToSpeech.LANG_AVAILABLE
+                } else {
+                    TextToSpeech.LANG_MISSING_DATA
+                }
+            }
+            return TextToSpeech.LANG_NOT_SUPPORTED
+        }
+
         return TextToSpeech.LANG_NOT_SUPPORTED
     }
 
@@ -102,6 +122,32 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
             "es" -> arrayOf("spa", "ESP", "")
             "pt" -> arrayOf("por", "PRT", "")
             "fr" -> arrayOf("fra", "FRA", "")
+            "ja" -> arrayOf("jpn", "JPN", "")
+            "ar" -> arrayOf("ara", "ARA", "")
+            "bg" -> arrayOf("bul", "BGR", "")
+            "cs" -> arrayOf("ces", "CZE", "")
+            "da" -> arrayOf("dan", "DNK", "")
+            "de" -> arrayOf("deu", "DEU", "")
+            "el" -> arrayOf("ell", "GRC", "")
+            "et" -> arrayOf("est", "EST", "")
+            "fi" -> arrayOf("fin", "FIN", "")
+            "hi" -> arrayOf("hin", "IND", "")
+            "hr" -> arrayOf("hrv", "HRV", "")
+            "hu" -> arrayOf("hun", "HUN", "")
+            "id" -> arrayOf("ind", "IDN", "")
+            "it" -> arrayOf("ita", "ITA", "")
+            "lt" -> arrayOf("lit", "LTU", "")
+            "lv" -> arrayOf("lav", "LVA", "")
+            "nl" -> arrayOf("nld", "NLD", "")
+            "pl" -> arrayOf("pol", "POL", "")
+            "ro" -> arrayOf("ron", "ROU", "")
+            "ru" -> arrayOf("rus", "RUS", "")
+            "sk" -> arrayOf("slk", "SVK", "")
+            "sl" -> arrayOf("slv", "SVN", "")
+            "sv" -> arrayOf("swe", "SWE", "")
+            "tr" -> arrayOf("tur", "TUR", "")
+            "uk" -> arrayOf("ukr", "UKR", "")
+            "vi" -> arrayOf("vie", "VNM", "")
             else -> arrayOf("eng", "USA", "")
         }
     }
@@ -115,7 +161,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         if (voiceName.contains("-supertonic-")) {
             val langPrefix = voiceName.substringBefore("-supertonic-")
             val styleName = voiceName.substringAfter("-supertonic-")
-            val modelVersion = if (langPrefix.startsWith("en")) "v1" else "v2"
+            val modelVersion = AssetManager.getModelVersionForLanguage(langPrefix)
             val file = File(filesDir, "$modelVersion/voice_styles/$styleName.json")
             if (file.exists()) return TextToSpeech.SUCCESS
         }
@@ -127,14 +173,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         val selected = prefs.getString("selected_voice", "F3.json") ?: "F3.json"
         val voiceName = if (selected.endsWith(".json")) selected.substringBeforeLast(".") else selected
         
-        val language = lang?.lowercase(Locale.ROOT) ?: "en"
-        val prefix = when {
-            language.startsWith("ko") || language.startsWith("kor") -> "ko"
-            language.startsWith("es") || language.startsWith("spa") -> "es"
-            language.startsWith("pt") || language.startsWith("por") -> "pt"
-            language.startsWith("fr") || language.startsWith("fra") || language.startsWith("fre") -> "fr"
-            else -> "en"
-        }
+        val prefix = normalizeLanguage(lang)
         return "$prefix-supertonic-$voiceName"
     }
 
@@ -148,7 +187,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
             voiceNames.forEach { name ->
                 voicesList.add(Voice("en-supertonic-$name", Locale.US, Voice.QUALITY_VERY_HIGH, Voice.LATENCY_NORMAL, false, setOf()))
             }
-        } else {
+        } else if (modelVersion == "v2") {
             // Only Multilingual Voices (excluding English as requested)
             val v2Dir = File(filesDir, "v2/onnx")
             if (v2Dir.exists()) {
@@ -159,6 +198,44 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
                     Locale.FRANCE
                 )
                 multilingualLocales.forEach { locale ->
+                    val langPrefix = locale.language
+                    voiceNames.forEach { name ->
+                        voicesList.add(Voice("$langPrefix-supertonic-$name", locale, Voice.QUALITY_VERY_HIGH, Voice.LATENCY_NORMAL, false, setOf()))
+                    }
+                }
+            }
+        } else { // v3
+            val v3Dir = File(filesDir, "v3/onnx")
+            if (v3Dir.exists()) {
+                val v3Locales = listOf(
+                    Locale.JAPAN,
+                    Locale.forLanguageTag("ar"),
+                    Locale.forLanguageTag("bg"),
+                    Locale.forLanguageTag("cs"),
+                    Locale.forLanguageTag("da"),
+                    Locale.GERMANY,
+                    Locale.forLanguageTag("el"),
+                    Locale.forLanguageTag("et"),
+                    Locale.forLanguageTag("fi"),
+                    Locale.forLanguageTag("hi-IN"),
+                    Locale.forLanguageTag("hr"),
+                    Locale.forLanguageTag("hu"),
+                    Locale.forLanguageTag("id"),
+                    Locale.ITALY,
+                    Locale.forLanguageTag("lt"),
+                    Locale.forLanguageTag("lv"),
+                    Locale.forLanguageTag("nl"),
+                    Locale.forLanguageTag("pl"),
+                    Locale.forLanguageTag("ro"),
+                    Locale.forLanguageTag("ru"),
+                    Locale.forLanguageTag("sk"),
+                    Locale.forLanguageTag("sl"),
+                    Locale.forLanguageTag("sv"),
+                    Locale.forLanguageTag("tr"),
+                    Locale.forLanguageTag("uk"),
+                    Locale.forLanguageTag("vi")
+                )
+                v3Locales.forEach { locale ->
                     val langPrefix = locale.language
                     voiceNames.forEach { name ->
                         voicesList.add(Voice("$langPrefix-supertonic-$name", locale, Voice.QUALITY_VERY_HIGH, Voice.LATENCY_NORMAL, false, setOf()))
@@ -178,16 +255,37 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         if (lang == null) return "en"
         val l = lang.lowercase(Locale.ROOT)
         return when {
-            l.startsWith("en") -> "en"
-            l.startsWith("ko") -> "ko"
-            l.startsWith("kor") -> "ko"
-            l.startsWith("es") -> "es"
-            l.startsWith("spa") -> "es"
-            l.startsWith("pt") -> "pt"
-            l.startsWith("por") -> "pt"
-            l.startsWith("fr") -> "fr"
-            l.startsWith("fra") -> "fr"
-            l.startsWith("fre") -> "fr"
+            l.startsWith("en") || l.startsWith("eng") -> "en"
+            l.startsWith("ko") || l.startsWith("kor") -> "ko"
+            l.startsWith("es") || l.startsWith("spa") -> "es"
+            l.startsWith("pt") || l.startsWith("por") -> "pt"
+            l.startsWith("fr") || l.startsWith("fra") || l.startsWith("fre") -> "fr"
+            l.startsWith("ja") || l.startsWith("jpn") -> "ja"
+            l.startsWith("ar") || l.startsWith("ara") -> "ar"
+            l.startsWith("bg") || l.startsWith("bul") -> "bg"
+            l.startsWith("cs") || l.startsWith("ces") || l.startsWith("cze") -> "cs"
+            l.startsWith("da") || l.startsWith("dan") -> "da"
+            l.startsWith("de") || l.startsWith("deu") || l.startsWith("ger") -> "de"
+            l.startsWith("el") || l.startsWith("ell") || l.startsWith("gre") -> "el"
+            l.startsWith("et") || l.startsWith("est") -> "et"
+            l.startsWith("fi") || l.startsWith("fin") -> "fi"
+            l.startsWith("hi") || l.startsWith("hin") -> "hi"
+            l.startsWith("hr") || l.startsWith("hrv") -> "hr"
+            l.startsWith("hu") || l.startsWith("hun") -> "hu"
+            l.startsWith("id") || l.startsWith("ind") -> "id"
+            l.startsWith("it") || l.startsWith("ita") -> "it"
+            l.startsWith("lt") || l.startsWith("lit") -> "lt"
+            l.startsWith("lv") || l.startsWith("lav") -> "lv"
+            l.startsWith("nl") || l.startsWith("nld") || l.startsWith("dut") -> "nl"
+            l.startsWith("pl") || l.startsWith("pol") -> "pl"
+            l.startsWith("ro") || l.startsWith("ron") || l.startsWith("rum") -> "ro"
+            l.startsWith("ru") || l.startsWith("rus") -> "ru"
+            l.startsWith("sk") || l.startsWith("slk") || l.startsWith("slo") -> "sk"
+            l.startsWith("sl") || l.startsWith("slv") -> "sl"
+            l.startsWith("sv") || l.startsWith("swe") -> "sv"
+            l.startsWith("tr") || l.startsWith("tur") -> "tr"
+            l.startsWith("uk") || l.startsWith("ukr") -> "uk"
+            l.startsWith("vi") || l.startsWith("vie") -> "vi"
             else -> "en"
         }
     }
@@ -212,9 +310,9 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
         val modelVersion = if (requestedVoice != null && requestedVoice.contains("-supertonic-")) {
              val langPrefix = requestedVoice.substringBefore("-supertonic-")
-             if (langPrefix.startsWith("en")) "v1" else "v2"
+             AssetManager.getModelVersionForLanguage(langPrefix)
         } else {
-             if (requestedLang == "en") "v1" else "v2"
+             AssetManager.getModelVersionForLanguage(requestedLang)
         }
         
         val voiceFile = if (requestedVoice != null && requestedVoice.contains("-supertonic-")) {
@@ -309,5 +407,6 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
         copyDir("v1", File(filesDir, "v1"))
         copyDir("v2", File(filesDir, "v2"))
+        copyDir("v3", File(filesDir, "v3"))
     }
 }

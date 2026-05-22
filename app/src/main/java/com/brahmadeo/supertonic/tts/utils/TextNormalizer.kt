@@ -1,6 +1,7 @@
 package com.brahmadeo.supertonic.tts.utils
 
 import java.util.regex.Pattern
+import com.brahmadeo.supertonic.tts.SupertonicTTS
 
 /**
  * Enhanced TextNormalizer with comprehensive rule set
@@ -217,6 +218,10 @@ class TextNormalizer {
             text
         }
 
+        if (lowerLang.startsWith("hi")) {
+            return normalizeHindi(processedText)
+        }
+
         // 2. Determine if we should apply English-style normalization rules
         // Currently: Always for English, or if toggle is on for Romance languages
         val isRomance = lowerLang.startsWith("fr") || lowerLang.startsWith("es") || lowerLang.startsWith("pt")
@@ -285,115 +290,93 @@ class TextNormalizer {
     }
 
     fun splitIntoSentences(text: String, lang: String = "en"): List<String> {
-        val abbreviations = listOf(
-            "Mr.", "Mrs.", "Dr.", "Ms.", "Prof.", "Sr.", "Jr.", 
-            "etc.", "vs.", "e.g.", "i.e.",
-            "Jan.", "Feb.", "Mar.", "Apr.", "May.", "Jun.", 
-            "Jul.", "Aug.", "Sep.", "Oct.", "Nov.", "Dec.",
-            "U.S.", "U.K.", "E.U."
-        )
-        var protectedText = text
-        
-        abbreviations.forEachIndexed { index, abbr ->
-            val placeholder = "__ABBR${index}__"
-            val pattern = Pattern.compile("\\b" + Pattern.quote(abbr), Pattern.CASE_INSENSITIVE)
-            protectedText = pattern.matcher(protectedText).replaceAll(placeholder)
+        return SupertonicTTS.chunkText(text, lang)
+    }
+
+    private fun normalizeHindi(text: String): String {
+        // 1. Convert Devanagari digits (०-९) to Latin digits (0-9)
+        var normalized = convertDevanagariDigits(text)
+
+        // 2. Clean up commas in numbers (e.g. "1,50,000" -> "150000")
+        val commaPattern = Pattern.compile("(?<=\\d),(?=\\d)")
+        normalized = commaPattern.matcher(normalized).replaceAll("")
+
+        // 3. Hindi Range Normalization (e.g., "10-15" -> "10 से 15")
+        val rangePattern = Pattern.compile("\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\b")
+        val rangeMatcher = rangePattern.matcher(normalized)
+        val rangeSb = StringBuffer()
+        while (rangeMatcher.find()) {
+            val replacement = "${rangeMatcher.group(1)} से ${rangeMatcher.group(2)}"
+            rangeMatcher.appendReplacement(rangeSb, replacement)
         }
-        
-        // Split by:
-        // 1. Punctuation (.!?) followed by optional quote and space and Capital/Number/Unicode Letter
-        // 2. Semi-colon followed by space
-        // FIXED: Quotes are now INSIDE the lookbehind so they aren't consumed by split
-        // OLD: (?<=[.!?])['"”’]?\\s+
-        // NEW: (?<=[.!?]['"”’]?)\\s+
-        // We also use a more specific lookahead to detect start of next sentence
-        val pattern = Pattern.compile("(?<=[.!?]['\"”’]?)\\s+(?=['\"“‘]?[\\p{L}\\d])|(?<=;)\\s+")
-        val rawSentences = protectedText.split(pattern)
-        
-        val refinedSentences = mutableListOf<String>()
-        val maxLength = 300
+        rangeMatcher.appendTail(rangeSb)
+        normalized = rangeSb.toString()
 
-        for (raw in rawSentences) {
-            if (raw.length <= maxLength) {
-                refinedSentences.add(raw)
-            } else {
-                // Split long sentences by comma if they are too long
-                val subParts = raw.split(Pattern.compile("(?<=,)\\s+"))
-                val currentPart = StringBuilder()
-                
-                for (part in subParts) {
-                    if (currentPart.length + part.length < maxLength) {
-                        if (currentPart.isNotEmpty()) currentPart.append(" ")
-                        currentPart.append(part)
-                    } else {
-                        if (currentPart.isNotEmpty()) {
-                            // Fix audio cutoff: If breaking at a comma or semi-colon, strip it
-                            // to prevent hard stops or artifacts.
-                            if (currentPart.endsWith(",") || currentPart.endsWith(";")) {
-                                currentPart.deleteCharAt(currentPart.length - 1)
-                            }
-                            refinedSentences.add(currentPart.toString())
-                            currentPart.clear()
-                        }
-                        currentPart.append(part)
-                    }
-                }
-                if (currentPart.isNotEmpty()) {
-                    refinedSentences.add(currentPart.toString())
-                }
-            }
+        // 4. Currency symbols (e.g. "₹500" or "INR 500" -> "500 रुपये")
+        val currencyPattern = Pattern.compile("(?:\\bINR|₹)\\s*(\\d+(?:\\.\\d+)?)\\b")
+        val currencyMatcher = currencyPattern.matcher(normalized)
+        val currencySb = StringBuffer()
+        while (currencyMatcher.find()) {
+            val amount = currencyMatcher.group(1) ?: ""
+            val replacement = "$amount रुपये"
+            currencyMatcher.appendReplacement(currencySb, replacement)
         }
+        currencyMatcher.appendTail(currencySb)
+        normalized = currencySb.toString()
 
-        val processedSentences = refinedSentences.map { sentence ->
-            var restored = sentence
-            abbreviations.forEachIndexed { index, abbr ->
-                val placeholder = "__ABBR${index}__"
-                restored = restored.replace(placeholder, abbr, ignoreCase = true)
-            }
-            restored.trim()
-        }.filter { it.isNotEmpty() }
+        // 5. Percentages (e.g. "5%" -> "5 प्रतिशत")
+        val percentPattern = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*%")
+        val percentMatcher = percentPattern.matcher(normalized)
+        val percentSb = StringBuffer()
+        while (percentMatcher.find()) {
+            val amount = percentMatcher.group(1) ?: ""
+            val replacement = "$amount प्रतिशत"
+            percentMatcher.appendReplacement(percentSb, replacement)
+        }
+        percentMatcher.appendTail(percentSb)
+        normalized = percentSb.toString()
 
-        // Chunking Logic: Accumulate sentences up to chunkLimit (300)
-        val chunkedSentences = mutableListOf<String>()
-        val currentChunk = StringBuilder()
-        val chunkLimit = 300
-
-        var i = 0
-        while (i < processedSentences.size) {
-            var sentence = processedSentences[i]
-            
-            // Universal Volatile/Punctuation Fix:
-            // Always insert space before !, ?, ,, ; to stabilize audio
-            // DISABLED for Korean
-            if (!lang.lowercase().startsWith("ko")) {
-                sentence = sentence.replaceFirst(Regex("([!?,;])(['\"”’]?)\\s*$"), " $1$2")
-            }
-
-            // HANDLE STABLE SENTENCE (Standard Accumulation)
-            if (currentChunk.length + sentence.length + 1 <= chunkLimit) {
-                if (currentChunk.isNotEmpty()) {
-                    currentChunk.append(" ")
-                }
-                currentChunk.append(sentence)
-            } else {
-                if (currentChunk.isNotEmpty()) {
-                    chunkedSentences.add(currentChunk.toString())
-                    currentChunk.clear()
-                }
-                // If a single sentence is huge, add it directly
-                if (sentence.length > chunkLimit) {
-                    chunkedSentences.add(sentence)
+        // 6. Convert remaining numbers to words (CRITICAL for C++ Engine)
+        val numberPattern = Pattern.compile("\\b(\\d+(?:\\.\\d+)?)\\b")
+        val numberMatcher = numberPattern.matcher(normalized)
+        val sb = StringBuffer()
+        while (numberMatcher.find()) {
+            val numStr = numberMatcher.group(1) ?: ""
+            try {
+                val replacement = if (numStr.contains(".")) {
+                    NumberUtils.convertHindiDouble(numStr.toDouble())
                 } else {
-                    currentChunk.append(sentence)
+                    NumberUtils.convertHindi(numStr.toLong())
                 }
+                numberMatcher.appendReplacement(sb, replacement)
+            } catch (_: Exception) {
+                numberMatcher.appendReplacement(sb, numStr)
             }
-            i++
         }
+        numberMatcher.appendTail(sb)
+        normalized = sb.toString()
 
-        if (currentChunk.isNotEmpty()) {
-            chunkedSentences.add(currentChunk.toString())
+        return normalized
+    }
+
+    private fun convertDevanagariDigits(text: String): String {
+        val sb = StringBuilder()
+        for (char in text) {
+            val replaced = when (char) {
+                '०' -> '0'
+                '१' -> '1'
+                '२' -> '2'
+                '३' -> '3'
+                '४' -> '4'
+                '५' -> '5'
+                '६' -> '6'
+                '७' -> '7'
+                '८' -> '8'
+                '९' -> '9'
+                else -> char
+            }
+            sb.append(replaced)
         }
-
-        return chunkedSentences
+        return sb.toString()
     }
 }

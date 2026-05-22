@@ -74,7 +74,7 @@ import androidx.compose.ui.window.Dialog
 import com.brahmadeo.supertonic.tts.ui.theme.SupertonicTheme
 import com.brahmadeo.supertonic.tts.utils.EbookManager
 import com.brahmadeo.supertonic.tts.utils.EbookParser
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -253,7 +253,7 @@ class EbookOutlineActivity : ComponentActivity() {
             },
             modifier = Modifier.clickable {
                 setExtracting(true)
-                CoroutineScope(Dispatchers.Main).launch {
+                lifecycleScope.launch {
                     val result = ebookParser.extractText(publication, link)
                     setExtracting(false)
                     result.onSuccess { onTextExtracted(it) }
@@ -319,7 +319,7 @@ class EbookOutlineActivity : ComponentActivity() {
                     onClick = {
                         setExtracting(true)
                         multiSelectMode = false
-                        CoroutineScope(Dispatchers.Main).launch {
+                        lifecycleScope.launch {
                             val result = ebookParser.extractPages(file, publication, selectedPages.toList())
                             setExtracting(false)
                             selectedPages.clear()
@@ -346,7 +346,7 @@ class EbookOutlineActivity : ComponentActivity() {
                 onLoadPage = { pageIndexToLoad ->
                     showPagePreviewDialog = false
                     setExtracting(true)
-                    CoroutineScope(Dispatchers.Main).launch {
+                    lifecycleScope.launch {
                         val result = ebookParser.extractPages(file, publication, listOf(pageIndexToLoad))
                         setExtracting(false)
                         result.onSuccess { onTextExtracted(it) }
