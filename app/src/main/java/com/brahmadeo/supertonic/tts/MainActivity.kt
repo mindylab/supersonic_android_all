@@ -596,36 +596,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startDownload(version: String) {
-        viewModel.isDownloading.value = true
-        viewModel.downloadingVersion.value = version
-        viewModel.downloadError.value = null
-        viewModel.downloadedBytes.longValue = 0L
-        viewModel.totalBytes.longValue = 0L
-        lifecycleScope.launch {
-            try {
-                val onProgress: (String, Float, Long, Long) -> Unit = { status, progress, downloaded, total ->
-                    runOnUiThread {
-                        viewModel.downloadStatus.value = status
-                        viewModel.downloadProgress.floatValue = progress
-                        viewModel.downloadedBytes.longValue = downloaded
-                        viewModel.totalBytes.longValue = total
-                    }
-                }
-                when (version) {
-                    "v1" -> AssetManager.downloadV1(this@MainActivity, onProgress)
-                    "v2" -> AssetManager.downloadV2(this@MainActivity, onProgress)
-                    else -> AssetManager.downloadV3(this@MainActivity, onProgress)
-                }
-                withContext(Dispatchers.Main) {
-                    viewModel.isDownloading.value = false
-                    initializeEngine(version)
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    viewModel.downloadError.value = e.message ?: "Unknown error"
-                    Log.e("MainActivity", "Download failed", e)
-                }
-            }
+        viewModel.startDownload(this, version) { completedVersion ->
+            initializeEngine(completedVersion)
         }
     }
 

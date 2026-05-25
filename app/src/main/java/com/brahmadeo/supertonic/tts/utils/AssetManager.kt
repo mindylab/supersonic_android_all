@@ -218,7 +218,13 @@ object AssetManager {
             // Pre-pass: probe every file's size upfront so the progress bar has a stable
             // denominator from the start (avoids jumpy / incorrect percentages mid-download).
             var totalBytes = 0L
-            files.forEach { relativePath ->
+            files.forEachIndexed { index, relativePath ->
+                onProgress(
+                    "Probing assets (${index + 1}/${files.size})",
+                    0f,
+                    0,
+                    0
+                )
                 val targetFile = File(baseDir, relativePath)
                 if (targetFile.exists()) {
                     totalBytes += targetFile.length()

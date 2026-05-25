@@ -1,11 +1,15 @@
 package com.brahmadeo.supertonic.tts.viewmodel
 
+import android.content.Context
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.brahmadeo.supertonic.tts.utils.AssetManager
+import kotlinx.coroutines.launch
 
 class MainViewModel : ViewModel() {
     // UI State
@@ -20,8 +24,8 @@ class MainViewModel : ViewModel() {
     var selectedVoiceFile2 = mutableStateOf(DEFAULT_VOICE_2)
     var isMixingEnabled = mutableStateOf(false)
     var mixAlpha = mutableFloatStateOf(0.5f)
-    var currentSpeed = mutableFloatStateOf(1.1f)
-    var currentSteps = mutableIntStateOf(5)
+    var currentSpeed = mutableFloatStateOf(DEFAULT_SPEED)
+    var currentSteps = mutableIntStateOf(DEFAULT_STEPS)
     var isAdvancedNormalizationEnabled = mutableStateOf(false)
 
     // Mini Player State
@@ -49,6 +53,40 @@ class MainViewModel : ViewModel() {
 
     // Data
     val voiceFiles = mutableStateMapOf<String, String>()
+
+    fun startDownload(context: Context, version: String, onComplete: (String) -> Unit) {
+        if (isDownloading.value) return
+
+        isDownloading.value = true
+        downloadingVersion.value = version
+        downloadError.value = null
+        downloadProgress.floatValue = 0f
+        downloadStatus.value = "Initializing..."
+        downloadedBytes.longValue = 0L
+        totalBytes.longValue = 0L
+
+        viewModelScope.launch {
+            try {
+                val onProgress: (String, Float, Long, Long) -> Unit = { status, progress, downloaded, total ->
+                    downloadStatus.value = status
+                    downloadProgress.floatValue = progress
+                    downloadedBytes.longValue = downloaded
+                    totalBytes.longValue = total
+                }
+                
+                when (version) {
+                    "v1" -> AssetManager.downloadV1(context, onProgress)
+                    "v2" -> AssetManager.downloadV2(context, onProgress)
+                    else -> AssetManager.downloadV3(context, onProgress)
+                }
+                
+                isDownloading.value = false
+                onComplete(version)
+            } catch (e: Exception) {
+                downloadError.value = e.message ?: "Unknown error"
+            }
+        }
+    }
 
     companion object {
         const val DEFAULT_VOICE = "F3.json"
