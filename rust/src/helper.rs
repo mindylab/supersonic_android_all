@@ -903,6 +903,42 @@ mod tests {
     }
 
     #[test]
+    fn test_split_sentences_french() {
+        let input = "Bonjour M. Dupont. Comment allez-vous ?";
+        let sentences = split_sentences(input, "fr");
+        assert_eq!(sentences.len(), 2);
+        assert_eq!(sentences[0].trim(), "Bonjour M. Dupont.");
+        assert_eq!(sentences[1].trim(), "Comment allez-vous ?");
+        
+        let input2 = "Le 1er. jour de l'année. C'est le 2e. test.";
+        let sentences2 = split_sentences(input2, "fr");
+        assert_eq!(sentences2.len(), 2);
+        assert_eq!(sentences2[0].trim(), "Le 1er. jour de l'année.");
+        assert_eq!(sentences2[1].trim(), "C'est le 2e. test.");
+    }
+
+    #[test]
+    fn test_preprocess_text_french_punc_spacing() {
+        // Test that spaces before punctuation are handled and sentences still split correctly
+        let input = "Bonjour ! Comment allez-vous ?";
+        // preprocess_text should normalize this.
+        let result = preprocess_text(input, "fr").unwrap();
+        // Since preprocess_text adds <fr> tags and common_preprocess/fr_preprocess remove space before !
+        assert_eq!(result, "<fr>Bonjour! Comment allez-vous?</fr>");
+        
+        // Test that it doesn't fuse when there's a space after
+        let sentences = split_sentences("Bonjour ! Comment allez-vous ?", "fr");
+        assert_eq!(sentences.len(), 2);
+    }
+
+    #[test]
+    fn test_preprocess_text_french_guillemets() {
+        let input = "« Bonjour »";
+        let result = preprocess_text(input, "fr").unwrap();
+        assert_eq!(result, "<fr>\"Bonjour\"</fr>");
+    }
+
+    #[test]
     fn test_preprocess_text_v3_languages() {
         // Test Japanese / V3 tag wrapping
         let result_ja = preprocess_text("こんにちは", "ja").unwrap();

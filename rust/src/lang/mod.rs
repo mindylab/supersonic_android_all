@@ -4,6 +4,7 @@ use unicode_normalization::UnicodeNormalization;
 
 mod default;
 mod en;
+mod fr;
 mod hi;
 mod ko;
 mod ja;
@@ -19,6 +20,7 @@ pub trait LanguageNormalizer: Send + Sync {
 pub fn get_normalizer(lang: &str) -> &'static dyn LanguageNormalizer {
     match lang {
         "en" => &*en::ENGLISH_NORMALIZER,
+        "fr" => &*fr::FRENCH_NORMALIZER,
         "hi" => &*hi::HINDI_NORMALIZER,
         "ko" => &*ko::KOREAN_NORMALIZER,
         "ja" => &*ja::JAPANESE_NORMALIZER,
