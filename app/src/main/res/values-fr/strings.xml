@@ -115,6 +115,13 @@
     <string name="notif_paused">En pause</string>
     <string name="notif_exporting">Exportation audio…</string>
 
+    <string name="downloading_models">Téléchargement des modèles</string>
+    <string name="download_failed">Échec du téléchargement</string>
+    <string name="retry_download">Réessayer le téléchargement</string>
+    <string name="download_message_v1">Téléchargement des modèles anglais standard (~255 Mo). Il s\'agit d\'une configuration unique pour la synthèse en anglais.</string>
+    <string name="download_message_v2">Téléchargement des modèles multilingues (~255 Mo). Cela active le support du français, de l\'espagnol, du portugais et du coréen. Ce téléchargement spécifique ne se produit qu\'une seule fois.</string>
+    <string name="download_message_v3">Téléchargement des modèles multilingues (~380 Mo). Cela active le support du japonais, de l\'arabe, de l\'allemand, de l\'hindi, du russe et de 21 autres langues. Ce téléchargement spécifique ne se produit qu\'une seule fois.</string>
+
     <!-- Voices -->
     <string name="voice_m1">Alex - Vif, Enjoué</string>
     <string name="voice_m2">James - Profond, Calme</string>

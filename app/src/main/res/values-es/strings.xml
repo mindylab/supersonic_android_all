@@ -117,6 +117,13 @@
     <string name="notif_paused">En pausa</string>
     <string name="notif_exporting">Exportando audio…</string>
 
+    <string name="downloading_models">Descargando modelos</string>
+    <string name="download_failed">Error de descarga</string>
+    <string name="retry_download">Reintentar descarga</string>
+    <string name="download_message_v1">Descargando modelos estándar de inglés (~255 MB). Esta es una configuración única para la síntesis en inglés.</string>
+    <string name="download_message_v2">Descargando modelos multilingües (~255 MB). Esto permite el soporte para francés, español, portugués y coreano. Esta descarga específica ocurre solo una vez.</string>
+    <string name="download_message_v3">Descargando modelos multilingües (~380 MB). Esto permite el soporte para japonés, árabe, alemán, hindi, ruso y otros 21 idiomas. Esta descarga específica ocurre solo una vez.</string>
+
     <!-- Voices -->
     <string name="voice_m1">Alex - Animado, Optimista</string>
     <string name="voice_m2">James - Profundo, Calmado</string>

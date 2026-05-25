@@ -649,7 +649,11 @@ class MainActivity : ComponentActivity() {
                 setupVoicesMap(version, viewModel.currentLang.value)
             }
 
-            if (SupertonicTTS.initialize(modelPath, libPath)) {
+            val success = withContext(Dispatchers.IO) {
+                SupertonicTTS.initialize(modelPath, libPath)
+            }
+
+            if (success) {
                 withContext(Dispatchers.Main) {
                     viewModel.isInitializing.value = false
                 }

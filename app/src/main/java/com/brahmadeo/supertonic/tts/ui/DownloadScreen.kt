@@ -6,6 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.brahmadeo.supertonic.tts.R
 import com.brahmadeo.supertonic.tts.ui.components.WavyLinearProgressIndicator
 
 @Composable
@@ -19,9 +21,9 @@ fun DownloadScreen(
     onRetry: () -> Unit = {}
 ) {
     val message = when (version) {
-        "v2" -> "Downloading Multilingual Models (~255MB). This enables support for French, Spanish, Portuguese, and Korean. This specific download happens only once."
-        "v3" -> "Downloading Multilingual Models (~380MB). This enables support for Japanese, Arabic, German, Hindi, Russian, and 21 other languages. This specific download happens only once."
-        else -> "Downloading Standard English Models (~255MB). This is a one-time setup for English synthesis."
+        "v2" -> stringResource(R.string.download_message_v2)
+        "v3" -> stringResource(R.string.download_message_v3)
+        else -> stringResource(R.string.download_message_v1)
     }
 
     Surface(
@@ -36,7 +38,7 @@ fun DownloadScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = if (error != null) "Download Failed" else "Downloading Models",
+                text = if (error != null) stringResource(R.string.download_failed) else stringResource(R.string.downloading_models),
                 style = MaterialTheme.typography.headlineMedium,
                 color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
             )
@@ -83,7 +85,7 @@ fun DownloadScreen(
                     onClick = onRetry,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Text("Retry Download")
+                    Text(stringResource(R.string.retry_download))
                 }
             }
         }

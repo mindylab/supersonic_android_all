@@ -120,6 +120,11 @@ object AssetManager {
                         lastException = Exception("HTTP 429 for $urlString")
                         return@repeat
                     }
+
+                    if (responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_PARTIAL) {
+                        throw Exception("HTTP $responseCode probing $urlString")
+                    }
+
                     val contentRange = conn.getHeaderField("Content-Range")
                     if (contentRange != null) {
                         val total = contentRange.substringAfterLast('/').trim().toLongOrNull()

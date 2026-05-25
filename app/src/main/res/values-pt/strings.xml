@@ -115,6 +115,13 @@
     <string name="notif_paused">Pausado</string>
     <string name="notif_exporting">Exportando áudio…</string>
 
+    <string name="downloading_models">Downloading Models</string>
+    <string name="download_failed">Download Failed</string>
+    <string name="retry_download">Retry Download</string>
+    <string name="download_message_v1">Downloading Standard English Models (~255MB). This is a one-time setup for English synthesis.</string>
+    <string name="download_message_v2">Downloading Multilingual Models (~255MB). This enables support for French, Spanish, Portuguese, and Korean. This specific download happens only once.</string>
+    <string name="download_message_v3">Downloading Multilingual Models (~380MB). This enables support for Japanese, Arabic, German, Hindi, Russian, and 21 other languages. This specific download happens only once.</string>
+
     <!-- Voices -->
     <string name="voice_m1">Alex - Animado, Otimista</string>
     <string name="voice_m2">James - Profundo, Calmo</string>
