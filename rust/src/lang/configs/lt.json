@@ -1,0 +1,16 @@
+{
+  "replacements": {
+    "„": "\"",
+    "“": "\"",
+    "”": "\"",
+    "–": "-",
+    "—": ", "
+  },
+  "abbreviations": [
+    "p.", "pon.", "g.", "pr.", "al.", "skg.",
+    "m.", "mėn.", "sav.", "d.", "val.", "min.", "sek.",
+    "nr.", "tel.", "el.", "kt.", "pan.", "t. y.", "t. t.",
+    "dr.", "prof.", "doc.", "habil.", "akad.",
+    "UAB.", "AB.", "VšĮ.", "MB.", "LR.", "ES.", "JAV."
+  ]
+}

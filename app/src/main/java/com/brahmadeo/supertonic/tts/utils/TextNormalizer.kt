@@ -208,6 +208,91 @@ class TextNormalizer {
         }
     }
 
+    private val lithuanianMonths = arrayOf(
+        "", "sausio", "vasario", "kovo", "balandžio", "gegužės", "birželio",
+        "liepos", "rugpjūčio", "rugsėjo", "spalio", "lapkričio", "gruodžio"
+    )
+
+    private val lithuanianDayOrdinals = mapOf(
+        1 to "pirma", 2 to "antra", 3 to "trečia", 4 to "ketvirta", 5 to "penkta",
+        6 to "šešta", 7 to "septinta", 8 to "aštunta", 9 to "devinta", 10 to "dešimta",
+        11 to "vienuolikta", 12 to "dvylikta", 13 to "trylikta", 14 to "keturiolikta",
+        15 to "penkiolikta", 16 to "šešiolikta", 17 to "septyniolikta",
+        18 to "aštuoniolikta", 19 to "devyniolikta", 20 to "dvidešimta",
+        21 to "dvidešimt pirma", 22 to "dvidešimt antra", 23 to "dvidešimt trečia",
+        24 to "dvidešimt ketvirta", 25 to "dvidešimt penkta", 26 to "dvidešimt šešta",
+        27 to "dvidešimt septinta", 28 to "dvidešimt aštunta", 29 to "dvidešimt devinta",
+        30 to "trisdešimta", 31 to "trisdešimt pirma"
+    )
+
+    private val lithuanianYearOrdinals = mapOf(
+        1 to "pirmų", 2 to "antrų", 3 to "trečių", 4 to "ketvirtų", 5 to "penktų",
+        6 to "šeštų", 7 to "septintų", 8 to "aštuntų", 9 to "devintų", 10 to "dešimtų",
+        11 to "vienuoliktų", 12 to "dvyliktų", 13 to "tryliktų", 14 to "keturioliktų",
+        15 to "penkioliktų", 16 to "šešioliktų", 17 to "septynioliktų",
+        18 to "aštuonioliktų", 19 to "devynioliktų", 20 to "dvidešimtų",
+        30 to "trisdešimtų", 40 to "keturiasdešimtų", 50 to "penkiasdešimtų",
+        60 to "šešiasdešimtų", 70 to "septyniasdešimtų", 80 to "aštuoniasdešimtų",
+        90 to "devyniasdešimtų"
+    )
+
+    private fun replacementSafe(value: String): String =
+        value.replace("\\", "\\\\").replace("$", "\\$")
+
+    private fun lithuanianYearOrdinal(value: Int): String {
+        lithuanianYearOrdinals[value]?.let { return it }
+        val tens = (value / 10) * 10
+        val ones = value % 10
+        val tensText = NumberUtils.convertLithuanian(tens.toLong())
+        val onesText = lithuanianYearOrdinals[ones] ?: NumberUtils.convertLithuanian(ones.toLong())
+        return "$tensText $onesText"
+    }
+
+    private fun lithuanianYearForDate(year: String): String {
+        val yearValue = year.toIntOrNull() ?: return NumberUtils.convertLithuanianNumberString(year)
+        val lastTwo = yearValue % 100
+        if (lastTwo == 0) return NumberUtils.convertLithuanian(yearValue.toLong())
+        val base = yearValue - lastTwo
+        return "${NumberUtils.convertLithuanian(base.toLong())} ${lithuanianYearOrdinal(lastTwo)}"
+    }
+
+    private fun lithuanianDate(year: String, month: String, day: String): String {
+        val monthIndex = month.toIntOrNull()
+        val dayIndex = day.toIntOrNull()
+        val monthText = monthIndex?.takeIf { it in 1..12 }?.let { lithuanianMonths[it] } ?: month
+        val dayText = dayIndex?.let { lithuanianDayOrdinals[it] } ?: NumberUtils.convertLithuanianNumberString(day)
+        return "${lithuanianYearForDate(year)} metų $monthText $dayText diena"
+    }
+
+    private fun lithuanianTime(hour: String, minute: String): String {
+        val hourValue = hour.toLongOrNull() ?: return "$hour:$minute"
+        val minuteValue = minute.toLongOrNull() ?: return "$hour:$minute"
+        val hourText = NumberUtils.convertLithuanian(hourValue)
+        val hourUnit = NumberUtils.lithuanianUnitForm(hourValue, "valanda", "valandos", "valandų")
+        if (minuteValue == 0L) return "$hourText $hourUnit"
+        val minuteText = NumberUtils.convertLithuanian(minuteValue)
+        val minuteUnit = NumberUtils.lithuanianUnitForm(minuteValue, "minutė", "minutės", "minučių")
+        return "$hourText $hourUnit $minuteText $minuteUnit"
+    }
+
+    private fun lithuanianEuroAmount(value: String): String {
+        val normalized = value.trim().replace(" ", "").replace(',', '.')
+        val parts = normalized.split(".", limit = 2)
+        val euros = parts.getOrNull(0)?.toLongOrNull() ?: return value
+        val euroText = NumberUtils.convertLithuanian(euros)
+        val euroUnit = NumberUtils.lithuanianUnitForm(euros, "euras", "eurai", "eurų")
+        val cents = parts.getOrNull(1)
+            ?.filter { it.isDigit() }
+            ?.padEnd(2, '0')
+            ?.take(2)
+            ?.toLongOrNull()
+            ?: 0L
+        if (cents == 0L) return "$euroText $euroUnit"
+        val centText = NumberUtils.convertLithuanian(cents)
+        val centUnit = NumberUtils.lithuanianUnitForm(cents, "centas", "centai", "centų")
+        return "$euroText $euroUnit $centText $centUnit"
+    }
+
     fun normalize(text: String, lang: String = "en", isAdvancedEnabled: Boolean = false): String {
         val lowerLang = lang.lowercase()
         
@@ -220,6 +305,10 @@ class TextNormalizer {
 
         if (lowerLang.startsWith("hi")) {
             return normalizeHindi(processedText)
+        }
+
+        if (lowerLang.startsWith("lt")) {
+            return normalizeLithuanian(processedText)
         }
 
         // 2. Determine if we should apply English-style normalization rules
@@ -291,6 +380,62 @@ class TextNormalizer {
 
     fun splitIntoSentences(text: String, lang: String = "en"): List<String> {
         return SupertonicTTS.chunkText(text, lang)
+    }
+
+    private fun normalizeLithuanian(text: String): String {
+        var normalized = text
+
+        fun replaceAll(regex: String, replacement: (java.util.regex.Matcher) -> String) {
+            val matcher = Pattern.compile(regex, Pattern.CASE_INSENSITIVE or Pattern.UNICODE_CASE).matcher(normalized)
+            val sb = StringBuffer()
+            while (matcher.find()) {
+                matcher.appendReplacement(sb, replacementSafe(replacement(matcher)))
+            }
+            matcher.appendTail(sb)
+            normalized = sb.toString()
+        }
+
+        replaceAll("\\b(\\d{4})[-./](\\d{1,2})[-./](\\d{1,2})\\b") { m ->
+            lithuanianDate(m.group(1) ?: "", m.group(2) ?: "", m.group(3) ?: "")
+        }
+        replaceAll("\\b(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})\\b") { m ->
+            lithuanianDate(m.group(3) ?: "", m.group(2) ?: "", m.group(1) ?: "")
+        }
+        replaceAll("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b") { m ->
+            lithuanianTime(m.group(1) ?: "", m.group(2) ?: "")
+        }
+        replaceAll("\\b(\\d[\\d\\s]*(?:[,.]\\d+)?)\\s*(?:€|EUR\\b)") { m ->
+            lithuanianEuroAmount(m.group(1) ?: "")
+        }
+        replaceAll("(?:€)\\s*(\\d[\\d\\s]*(?:[,.]\\d+)?)\\b") { m ->
+            lithuanianEuroAmount(m.group(1) ?: "")
+        }
+        replaceAll("\\b(\\d[\\d\\s]*(?:[,.]\\d+)?)\\s*%") { m ->
+            val amount = NumberUtils.convertLithuanianNumberString(m.group(1) ?: "")
+            val raw = (m.group(1) ?: "").trim().replace(" ", "").replace(',', '.')
+            val whole = raw.substringBefore(".").toLongOrNull() ?: 0L
+            "$amount ${NumberUtils.lithuanianUnitForm(whole, "procentas", "procentai", "procentų")}"
+        }
+        replaceAll("\\b(\\d+)\\s*[-\\u2013\\u2014]\\s*(\\d+)\\b") { m ->
+            "nuo ${NumberUtils.convertLithuanianNumberString(m.group(1) ?: "")} iki ${NumberUtils.convertLithuanianNumberString(m.group(2) ?: "")}"
+        }
+        replaceAll("\\b(\\d[\\d\\s]*(?:[,.]\\d+)?)\\s*(km|kg|g|m)\\b") { m ->
+            val value = m.group(1) ?: ""
+            val number = NumberUtils.convertLithuanianNumberString(value)
+            val unit = when (m.group(2)?.lowercase()) {
+                "km" -> "kilometrų"
+                "kg" -> "kilogramų"
+                "g" -> "gramų"
+                "m" -> "metrų"
+                else -> m.group(2) ?: ""
+            }
+            "$number $unit"
+        }
+        replaceAll("\\b\\d[\\d\\s]*(?:[,.]\\d+)?\\b") { m ->
+            NumberUtils.convertLithuanianNumberString(m.group(0) ?: "")
+        }
+
+        return normalized
     }
 
     private fun normalizeHindi(text: String): String {

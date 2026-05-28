@@ -11,6 +11,30 @@ configurations {
     onnxRuntime
 }
 
+def isWindowsHost = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("windows")
+def visualCppEnv = [:]
+if (isWindowsHost) {
+    def vsDevCmd = new File("C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/Tools/VsDevCmd.bat")
+    if (vsDevCmd.exists()) {
+        def stdout = new ByteArrayOutputStream()
+        exec {
+            commandLine "cmd.exe", "/c", "\"${vsDevCmd.absolutePath}\" -arch=x64 -host_arch=x64 >nul && set"
+            standardOutput = stdout
+        }
+        stdout.toString().readLines().each { line ->
+            def separator = line.indexOf("=")
+            if (separator > 0) {
+                def key = line.substring(0, separator)
+                def normalizedKey = key.toUpperCase(Locale.ROOT)
+                if (normalizedKey in ["PATH", "INCLUDE", "LIB", "LIBPATH", "WINDOWSSDKDIR", "VCINSTALLDIR", "VSINSTALLDIR"]) {
+                    visualCppEnv[key] = line.substring(separator + 1)
+                }
+            }
+        }
+        println "DEBUG: Loaded Visual C++ build environment from $vsDevCmd"
+    }
+}
+
 cargo {
     module = "../rust"
     libname = "supertonic_tts"
@@ -20,27 +44,45 @@ cargo {
 
     // F-Droid Fix: Robustly find rustc/cargo
     def home = System.getenv("HOME")
+    def userProfile = System.getenv("USERPROFILE")
+    def cargoHome = System.getenv("CARGO_HOME")
     def path = System.getenv("PATH")
     println "DEBUG: HOME=$home"
+    println "DEBUG: USERPROFILE=$userProfile"
+    println "DEBUG: CARGO_HOME=$cargoHome"
     println "DEBUG: PATH=$path"
     
     def cargoBin = null
     def rustcBin = null
 
     // 1. Try resolving from standard locations
-    def candidatePaths = [
-        "${home}/.cargo/bin",
+    def candidatePaths = []
+    if (cargoHome) candidatePaths.add("${cargoHome}/bin")
+    if (home) candidatePaths.add("${home}/.cargo/bin")
+    if (userProfile) candidatePaths.add("${userProfile}/.cargo/bin")
+    if (System.getenv("HOMEDRIVE") && System.getenv("HOMEPATH")) {
+        candidatePaths.add("${System.getenv("HOMEDRIVE")}${System.getenv("HOMEPATH")}/.cargo/bin")
+    }
+    candidatePaths.addAll([
         "/home/vagrant/.cargo/bin", // Explicit F-Droid path
         "/usr/local/cargo/bin",
         "/usr/bin",
         "/usr/local/bin"
-    ]
+    ])
+    path?.split(File.pathSeparator)?.each { candidatePaths.add(it) }
+    def isWindows = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("windows")
+    def cargoNames = isWindows ? ["cargo.exe", "cargo"] : ["cargo"]
+    def rustcNames = isWindows ? ["rustc.exe", "rustc"] : ["rustc"]
     
     for (String loc : candidatePaths) {
-        def cargo = new File(loc, "cargo")
-        def rustc = new File(loc, "rustc")
-        if (cargo.exists() && cargoBin == null) cargoBin = cargo.absolutePath
-        if (rustc.exists() && rustcBin == null) rustcBin = rustc.absolutePath
+        for (String cargoName : cargoNames) {
+            def cargo = new File(loc, cargoName)
+            if (cargo.exists() && cargoBin == null) cargoBin = cargo.absolutePath
+        }
+        for (String rustcName : rustcNames) {
+            def rustc = new File(loc, rustcName)
+            if (rustc.exists() && rustcBin == null) rustcBin = rustc.absolutePath
+        }
     }
 
     if (cargoBin != null) {
@@ -74,6 +116,9 @@ tasks.configureEach { task ->
     if (task.name.startsWith('cargoBuild')) {
         task.dependsOn extractOnnxLib
         if (task.hasProperty('environment')) {
+            visualCppEnv.each { key, value ->
+                task.environment key, value
+            }
             task.environment 'ORT_LIB_LOCATION', "${layout.buildDirectory.get().asFile}/onnxruntime/jni"
             task.environment 'ORT_SKIP_DOWNLOAD', '1'
         }
@@ -86,7 +131,7 @@ tasks.configureEach { task ->
 android {
     namespace 'com.brahmadeo.supertonic.tts'
     compileSdk = 36
-    ndkVersion = "29.0.14206865"
+    ndkVersion = "30.0.14904198"
 
     sourceSets {
         main {

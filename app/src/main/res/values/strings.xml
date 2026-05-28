@@ -44,10 +44,10 @@
     <string name="v2_deleted_msg">Model v2 deleted</string>
 
     <string name="v3_download_title">Download Model v3?</string>
-    <string name="v3_download_message">Supporting Japanese, Arabic, German, Hindi, Russian, and 21 other languages requires an additional download (~380MB). Do you want to download it now?</string>
+    <string name="v3_download_message">Supporting Lithuanian, Japanese, Arabic, German, Hindi, Russian, and other v3 languages requires an additional download (~380MB). Do you want to download it now?</string>
     <string name="v3_download_button">Download</string>
     <string name="v3_delete_title">Delete Model v3?</string>
-    <string name="v3_delete_message">This will remove the v3 model and voice styles to free up space (~380MB). You will lose support for Japanese, Arabic, German, Hindi, Russian, and 21 other languages. You can download them again later if needed.</string>
+    <string name="v3_delete_message">This will remove the v3 model and voice styles to free up space (~380MB). You will lose support for Lithuanian, Japanese, Arabic, German, Hindi, Russian, and other v3 languages. You can download them again later if needed.</string>
     <string name="v3_deleted_msg">Model v3 deleted</string>
 
     <!-- Playback Activity -->
@@ -147,7 +147,7 @@
     <string name="retry_download">Retry Download</string>
     <string name="download_message_v1">Downloading Standard English Models (~255MB). This is a one-time setup for English synthesis.</string>
     <string name="download_message_v2">Downloading Multilingual Models (~255MB). This enables support for French, Spanish, Portuguese, and Korean. This specific download happens only once.</string>
-    <string name="download_message_v3">Downloading Multilingual Models (~380MB). This enables support for Japanese, Arabic, German, Hindi, Russian, and 21 other languages. This specific download happens only once.</string>
+    <string name="download_message_v3">Downloading Multilingual Models (~380MB). This enables support for Lithuanian, Japanese, Arabic, German, Hindi, Russian, and other v3 languages. This specific download happens only once.</string>
 
     <!-- Voices -->
     <string name="voice_m1">Alex - Lively, Upbeat</string>

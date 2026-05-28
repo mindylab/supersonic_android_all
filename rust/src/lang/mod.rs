@@ -8,6 +8,7 @@ mod fr;
 mod hi;
 mod ko;
 mod ja;
+mod lt;
 
 
 pub trait LanguageNormalizer: Send + Sync {
@@ -24,6 +25,7 @@ pub fn get_normalizer(lang: &str) -> &'static dyn LanguageNormalizer {
         "hi" => &*hi::HINDI_NORMALIZER,
         "ko" => &*ko::KOREAN_NORMALIZER,
         "ja" => &*ja::JAPANESE_NORMALIZER,
+        "lt" => &*lt::LITHUANIAN_NORMALIZER,
         _ => &default::DEFAULT_NORMALIZER,
     }
 }

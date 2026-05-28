@@ -1,5 +1,3 @@
-[source.crates-io]
-replace-with = "vendored-sources"
-
-[source.vendored-sources]
-directory = "vendor"
+# Local Android Studio builds fetch Rust dependencies from crates.io.
+# F-Droid/offline builds can still run `cargo vendor vendor` and add a
+# source replacement here before building in a networkless environment.

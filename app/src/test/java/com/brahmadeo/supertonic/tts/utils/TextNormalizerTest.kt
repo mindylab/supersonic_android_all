@@ -135,4 +135,18 @@ class TextNormalizerTest {
         // Devanagari digits
         assertEquals("तिरेपन दशमलव तीन", normalizer.normalize("५३.३", "hi"))
     }
+
+    @Test
+    fun testLithuanianNormalization() {
+        val normalizer = TextNormalizer()
+
+        assertEquals("trys", normalizer.normalize("3", "lt"))
+        assertEquals("du šimtai", normalizer.normalize("200", "lt"))
+        assertEquals("penki eurai penkiasdešimt centų", normalizer.normalize("5,50 €", "lt"))
+        assertEquals("dvidešimt keturi procentai", normalizer.normalize("24%", "lt"))
+        assertEquals(
+            "du tūkstančiai dvidešimt šeštų metų gegužės dvidešimt aštunta diena",
+            normalizer.normalize("2026-05-28", "lt")
+        )
+    }
 }
