@@ -28,7 +28,8 @@ jobs:
         id: setup-ndk
         shell: bash
         run: |
-          yes | sdkmanager --install "ndk;30.0.14904198"
+          sdkmanager="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --install "ndk;30.0.14904198"
           ndk_path="${ANDROID_SDK_ROOT}/ndk/30.0.14904198"
           echo "ndk-path=$ndk_path" >> "$GITHUB_OUTPUT"
 
