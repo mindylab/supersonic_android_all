@@ -29,7 +29,9 @@ jobs:
         shell: bash
         run: |
           sdkmanager="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
           yes | "$sdkmanager" --install "ndk;30.0.14904198"
+          set -o pipefail
           ndk_path="${ANDROID_SDK_ROOT}/ndk/30.0.14904198"
           echo "ndk-path=$ndk_path" >> "$GITHUB_OUTPUT"
 
