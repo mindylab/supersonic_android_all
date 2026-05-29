@@ -26,9 +26,11 @@ jobs:
 
       - name: Setup Android NDK
         id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r30
+        shell: bash
+        run: |
+          yes | sdkmanager --install "ndk;30.0.14904198"
+          ndk_path="${ANDROID_SDK_ROOT}/ndk/30.0.14904198"
+          echo "ndk-path=$ndk_path" >> "$GITHUB_OUTPUT"
 
       - name: Configure local.properties
         run: |
