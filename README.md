@@ -6,6 +6,7 @@ Please note that functionality and bug fixes may vary slightly between the F-Dro
 
 ### Download Options
 
+* **MindyLab Optimized Release:** Available from [GitHub releases](https://github.com/mindylab/supersonic_android_all/releases/latest). This build is tuned for LMSMOB Chat and includes TTS service isolation plus request-level quality and timeout handling for smoother long-answer processing.
 * **Stable Release:** Available now on [F-Droid](https://f-droid.org/packages/com.brahmadeo.supertonic.tts/)
 * **Stable Release:** Available on [Google Play Store](https://play.google.com/store/apps/details?id=com.brahmadeo.supertonic.tts)
 

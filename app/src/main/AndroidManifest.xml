@@ -103,6 +103,7 @@
             android:exported="false" />
 
         <service android:name=".service.SupertonicTextToSpeechService"
+            android:process=":tts_engine"
             android:exported="true"
             android:label="Supertonic TTS"
             android:permission="android.permission.BIND_TEXT_TO_SPEECH_SERVICE">

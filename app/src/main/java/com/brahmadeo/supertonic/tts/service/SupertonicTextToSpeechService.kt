@@ -8,6 +8,7 @@ import android.speech.tts.Voice
 import android.util.Log
 import android.content.Context
 import android.os.Build
+import android.os.Process
 import com.brahmadeo.supertonic.tts.SupertonicTTS
 import com.brahmadeo.supertonic.tts.utils.AssetManager
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +22,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.system.exitProcess
 
 class SupertonicTextToSpeechService : TextToSpeechService() {
 
@@ -36,7 +39,15 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
     }
 
     companion object {
+        private const val TAG = "SupertonicTTSService"
         const val VOLUME_BOOST_FACTOR = 2.5f
+        const val DIFFUSION_STEPS_PARAM = "com.brahmadeo.supertonic.tts.DIFFUSION_STEPS"
+        const val DIFFUSION_STEPS_PARAM_SHORT = "diffusion_steps"
+        const val SYNTHESIS_WATCHDOG_TIMEOUT_PARAM = "com.brahmadeo.supertonic.tts.SYNTHESIS_TIMEOUT_MS"
+        const val SYNTHESIS_WATCHDOG_TIMEOUT_PARAM_SHORT = "synthesis_timeout_ms"
+        private const val DEFAULT_SYNTHESIS_WATCHDOG_TIMEOUT_MS = 30000L
+        private const val MIN_SYNTHESIS_WATCHDOG_TIMEOUT_MS = 12000L
+        private const val MAX_SYNTHESIS_WATCHDOG_TIMEOUT_MS = 120000L
     }
 
     override fun onCreate() {
@@ -292,6 +303,78 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
     private val textNormalizer = com.brahmadeo.supertonic.tts.utils.TextNormalizer()
 
+    private fun SynthesisRequest.requestedDiffusionSteps(defaultSteps: Int): Int {
+        val requestParams = params ?: return defaultSteps.coerceIn(1, 10)
+        val requestedSteps = listOf(DIFFUSION_STEPS_PARAM, DIFFUSION_STEPS_PARAM_SHORT)
+            .firstNotNullOfOrNull { key ->
+                if (!requestParams.containsKey(key)) {
+                    null
+                } else {
+                    when (val rawValue = requestParams.get(key)) {
+                        is Int -> rawValue
+                        is Number -> rawValue.toInt()
+                        is String -> rawValue.toIntOrNull()
+                        else -> null
+                    }
+                }
+            }
+        return (requestedSteps ?: defaultSteps).coerceIn(1, 10)
+    }
+
+    private fun SynthesisRequest.requestedWatchdogTimeoutMs(defaultTimeoutMs: Long): Long {
+        val requestParams = params ?: return defaultTimeoutMs.coerceIn(
+            MIN_SYNTHESIS_WATCHDOG_TIMEOUT_MS,
+            MAX_SYNTHESIS_WATCHDOG_TIMEOUT_MS,
+        )
+        val requestedTimeout = listOf(SYNTHESIS_WATCHDOG_TIMEOUT_PARAM, SYNTHESIS_WATCHDOG_TIMEOUT_PARAM_SHORT)
+            .firstNotNullOfOrNull { key ->
+                if (!requestParams.containsKey(key)) {
+                    null
+                } else {
+                    when (val rawValue = requestParams.get(key)) {
+                        is Long -> rawValue
+                        is Int -> rawValue.toLong()
+                        is Number -> rawValue.toLong()
+                        is String -> rawValue.toLongOrNull()
+                        else -> null
+                    }
+                }
+            }
+        return (requestedTimeout ?: defaultTimeoutMs).coerceIn(
+            MIN_SYNTHESIS_WATCHDOG_TIMEOUT_MS,
+            MAX_SYNTHESIS_WATCHDOG_TIMEOUT_MS,
+        )
+    }
+
+    private fun startSynthesisWatchdog(
+        rawText: String,
+        watchdogTimeoutMs: Long,
+        completed: AtomicBoolean,
+        callback: SynthesisCallback,
+    ): Thread =
+        Thread {
+            try {
+                Thread.sleep(watchdogTimeoutMs)
+            } catch (_: InterruptedException) {
+                return@Thread
+            }
+            if (!completed.compareAndSet(false, true)) {
+                return@Thread
+            }
+            Log.e(
+                TAG,
+                "Synthesis watchdog timed out after ${watchdogTimeoutMs}ms for ${rawText.length} chars. Killing isolated TTS process.",
+            )
+            SupertonicTTS.setCancelled(true)
+            runCatching { callback.error() }
+            Process.killProcess(Process.myPid())
+            exitProcess(10)
+        }.apply {
+            name = "SupertonicTTS-Watchdog"
+            isDaemon = true
+            start()
+        }
+
     override fun onSynthesizeText(request: SynthesisRequest?, callback: SynthesisCallback?) {
         if (request == null || callback == null) return
         SupertonicTTS.setCancelled(false)
@@ -302,7 +385,7 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
         }
         val rawText = request.charSequenceText?.toString() ?: return
         val effectiveSpeed = (request.speechRate / 100.0f).coerceIn(0.5f, 2.5f)
-        callback.start(SupertonicTTS.getAudioSampleRate(), android.media.AudioFormat.ENCODING_PCM_16BIT, 1)
+        val completed = AtomicBoolean(false)
         
         val requestedVoice = request.voiceName
         val requestedLang = normalizeLanguage(request.language)
@@ -343,21 +426,28 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
             }
         }
 
-        val steps = prefs.getInt("diffusion_steps", 5)
+        val steps = request.requestedDiffusionSteps(prefs.getInt("diffusion_steps", 5))
+        val watchdogTimeoutMs = request.requestedWatchdogTimeoutMs(DEFAULT_SYNTHESIS_WATCHDOG_TIMEOUT_MS)
 
         // Ensure engine is initialized for the correct model
-        if (SupertonicTTS.getSoC() == -1) {
-             val modelPath = File(filesDir, "$modelVersion/onnx").absolutePath
-             val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
-             SupertonicTTS.initialize(modelPath, libPath)
-        } else {
-            // Check if current engine matches required model version
-            // For now, we assume if SoC is valid, it's okay, but ideally we'd re-init if modelVersion changed
-            // However, JNI initialization is expensive, so we only re-init if really needed.
+        val modelPath = File(filesDir, "$modelVersion/onnx").absolutePath
+        val libPath = applicationInfo.nativeLibraryDir + "/libonnxruntime.so"
+        if (!SupertonicTTS.initialize(modelPath, libPath)) {
+            if (completed.compareAndSet(false, true)) {
+                callback.error()
+            }
+            return
         }
+
+        callback.start(SupertonicTTS.getAudioSampleRate(), android.media.AudioFormat.ENCODING_PCM_16BIT, 1)
+        val sentences = textNormalizer.splitIntoSentences(rawText, requestedLang)
+        val watchdog = startSynthesisWatchdog(rawText, watchdogTimeoutMs, completed, callback)
         
         try {
-            val sentences = textNormalizer.splitIntoSentences(rawText, requestedLang)
+            Log.i(
+                TAG,
+                "Starting synthesis: chars=${rawText.length}, sentences=${sentences.size}, lang=$requestedLang, model=$modelVersion, steps=$steps, timeout=${watchdogTimeoutMs}ms",
+            )
             var success = true
             for (sentence in sentences) {
                 if (SupertonicTTS.isCancelled()) { success = false; break }
@@ -367,18 +457,37 @@ class SupertonicTextToSpeechService : TextToSpeechService() {
 
                 val audioData = SupertonicTTS.generateAudio(normalizedText, requestedLang, stylePath, effectiveSpeed, 0.0f, steps, VOLUME_BOOST_FACTOR, null)
 
+                if (completed.get()) {
+                    success = false
+                    break
+                }
+
                 if (audioData != null && audioData.isNotEmpty()) {
                     var offset = 0
-                    while (offset < audioData.size) {
+                    while (offset < audioData.size && !completed.get()) {
                         val length = 4096.coerceAtMost(audioData.size - offset)
                         callback.audioAvailable(audioData, offset, length)
                         offset += length
                     }
+                } else {
+                    success = false
+                    break
                 }
             }
-            if (success) callback.done() else callback.error()
+            if (completed.compareAndSet(false, true)) {
+                if (success) {
+                    callback.done()
+                } else {
+                    callback.error()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Synthesis failed", e)
+            if (completed.compareAndSet(false, true)) {
+                callback.error()
+            }
         } finally {
-            // Isolation handled in SupertonicTTS
+            watchdog.interrupt()
         }
     }
 
